@@ -1,5 +1,12 @@
 # MINI ClassIsland — Android 移动端/平板集控客户端
 
+<p align="center">
+  <a href="https://miniclassisland.com" target="_blank" rel="noopener noreferrer">
+    <img src="assets/miniclassisland.png" alt="MINI ClassIsland Logo" width="128" height="128" />
+  </a>
+</p>
+
+
 **MINI ClassIsland Android**（包名：`org.miniopensource.miniclassisland`）是基于 **Jetpack Compose + Material 3 Adaptive** 构建的原生 Android 集控与治理客户端。它同时集成了面向学校/机构管理员的 **租户集控工作台（Management API `:27042`）** 与面向平台超级管理员的 **全局治理中心（Admin API `:27043`）**。
 
 ---
