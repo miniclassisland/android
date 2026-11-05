@@ -1,20 +1,20 @@
 *.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-.kotlin/
-local.properties
+.gradle/
+build/
 app/build/
+/local.properties
+local.properties
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iws
+out/
+
+# Kotlin / Native compilation
+.kotlin/
+.externalNativeBuild/
+.cxx/
+captures/
 
 # Signing keys & credentials
 *.jks
@@ -25,6 +25,8 @@ app/build/
 *.p8
 *.snk
 *.crt
+*.cer
+*.der
 *id_rsa*
 *id_ed25519*
 *id_ecdsa*
@@ -32,10 +34,22 @@ app/build/
 key.properties
 keystore.properties
 google-services.json
+
+# Environment & Config
 .env*
 !.env.example
+config.json
+config.*.json
+
+# OS & Temp
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+*.bak
 *.log
 *.db
 *.sqlite*
-Thumbs.db
-desktop.ini
+.temp/
