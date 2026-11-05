@@ -6,7 +6,11 @@ app/build/
 local.properties
 
 # Android Studio / IntelliJ IDEA
-.idea/
+# IDE project identity (shared name and icon)
+.idea/*
+!.idea/.name
+!.idea/icon.png
+!.idea/icon.svg
 *.iws
 out/
 

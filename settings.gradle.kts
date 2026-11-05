@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "miniclassisland-android"
+rootProject.name = "MINI ClassIsland Android"
 include(":app")
