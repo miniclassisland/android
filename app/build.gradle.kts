@@ -11,8 +11,8 @@ android {
         applicationId = "org.miniopensource.miniclassisland"
         minSdk = 26
         targetSdk = 35
-        versionCode = 100
-        versionName = "1.0.0"
+        versionCode = 240
+        versionName = "2.4.0"
     }
 
     buildTypes {
