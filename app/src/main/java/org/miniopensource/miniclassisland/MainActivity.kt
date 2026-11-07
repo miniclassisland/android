@@ -308,7 +308,7 @@ class MainActivity : Activity() {
 
     internal fun logoutCurrentUser() {
         runAsync(
-            work = { ApiClient.request(ApiClient.managementUrl, "/token/deactivate", "DELETE") },
+            work = { ApiClient.request(ApiClient.managementUrl, "/token/deactivate", "POST", JSONObject()) },
             done = {
                 ApiClient.token = ""
                 ApiClient.tokenExpiresAtEpochSec = 0L
@@ -334,12 +334,12 @@ class MainActivity : Activity() {
             work = {
                 val r = ApiClient.redeemCertificate(trimmed)
                 if (!r.ok) return@runAsync r
-                ApiClient.requestSessionFromCertificate(3600)
+                if (ApiClient.token.isNotEmpty()) r else ApiClient.requestSessionFromCertificate(3600)
             },
             done = { res ->
                 saveLocalAuthState()
                 if (res.ok) {
-                    setFeedback("已兑换登录安全证书并获取 1 小时管理会话 Token", false)
+                    setFeedback("已兑换登录安全证书并获取 1 小时管理会话令牌", false)
                     completeLoginAndLoadAccounts()
                 } else {
                     setFeedback("安全证书兑换失败: ${res.error}", true)
