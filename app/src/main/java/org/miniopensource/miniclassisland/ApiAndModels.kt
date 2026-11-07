@@ -216,20 +216,79 @@ val BUILTIN_ACTIONS = listOf(
 )
 
 val AUDIT_EVENT_LABELS = mapOf(
-    0 to "未指定",
-    1 to "认证成功",
-    2 to "认证失败",
-    3 to "授权设置变更",
-    4 to "应用启动",
-    5 to "应用崩溃",
-    6 to "应用退出",
-    7 to "插件安装",
-    8 to "插件卸载",
-    9 to "课表变更",
-    10 to "时间偏移设置变更",
-    11 to "策略变更",
-    12 to "预注册请求",
-    13 to "重复上线拒绝"
+    0 to "未指定事件",
+    1 to "授权验证成功",
+    2 to "授权验证失败",
+    4 to "应用设置更新",
+    5 to "换课操作完成",
+    6 to "课表更新",
+    7 to "时间表更新",
+    8 to "科目更新",
+    9 to "应用异常崩溃",
+    10 to "应用启动",
+    11 to "应用正常退出",
+    12 to "插件安装",
+    13 to "插件卸载"
+)
+
+val CONFIG_TYPE_LABELS = mapOf(
+    1 to "应用设置",
+    2 to "当前档案",
+    3 to "组件配置",
+    4 to "自动化配置",
+    5 to "运行日志",
+    6 to "已安装插件"
+)
+
+val ROLE_LABELS = mapOf(
+    "banned" to "已封禁",
+    "pending" to "待激活",
+    "normal" to "普通用户",
+    "admin" to "管理员",
+    "superadmin" to "超级管理员"
+)
+
+val ACCOUNT_ROLE_LABELS = mapOf(
+    "owner" to "所有者",
+    "admin" to "管理员",
+    "member" to "成员",
+    "viewer" to "观察者"
+)
+
+val REGISTRATION_MODE_LABELS = mapOf(
+    "open" to "开放接入",
+    "pairing" to "配对码审批接入",
+    "pre_reg" to "预注册白名单接入"
+)
+
+val QUOTA_LABELS = mapOf(
+    "max_clients" to "允许注册的设备数",
+    "max_grpc_connections" to "允许实时长连接的设备数量",
+    "max_bandwidth_mb" to "月度流量配额",
+    "feature.ota" to "策略与组件分发",
+    "feature.audit" to "终端安全审计日志"
+)
+
+val TICKET_STATUS_LABELS = mapOf(
+    "open" to "待处理",
+    "in_progress" to "处理中",
+    "resolved" to "已解决",
+    "closed" to "已关闭"
+)
+
+val TICKET_PRIORITY_LABELS = mapOf(
+    "low" to "低",
+    "normal" to "普通",
+    "high" to "高",
+    "urgent" to "紧急"
+)
+
+val TICKET_CATEGORY_LABELS = mapOf(
+    "account" to "账户问题",
+    "client" to "客户端问题",
+    "bug" to "故障报告",
+    "feature" to "功能建议",
+    "other" to "其他"
 )
 
 fun formatTs(ts: Long): String {
@@ -277,7 +336,19 @@ data class HttpRes(
                 JSONArray()
             }
         }
-        return json.optJSONArray("items") ?: json.optJSONArray("resources") ?: JSONArray()
+        return json.optJSONArray("items")
+            ?: json.optJSONArray("accounts")
+            ?: json.optJSONArray("clients")
+            ?: json.optJSONArray("requests")
+            ?: json.optJSONArray("codes")
+            ?: json.optJSONArray("quotas")
+            ?: json.optJSONArray("members")
+            ?: json.optJSONArray("invitations")
+            ?: json.optJSONArray("logs")
+            ?: json.optJSONArray("uploads")
+            ?: json.optJSONArray("users")
+            ?: json.optJSONArray("resources")
+            ?: JSONArray()
     }
 }
 

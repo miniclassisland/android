@@ -47,14 +47,24 @@ class MainActivity : Activity() {
     internal var accounts = JSONArray()
     internal var currentAccountId: String = ""
     internal var currentAccountName = ""
+    internal var currentAccountSlug = ""
+    internal var userCenterAccountSearch = ""
     internal var showCreateAccountForm = false
     internal var showJoinInviteForm = false
     internal var showUserMenu = false
     internal var isSuperAdminMode = false
     internal var isSuperAdminTakeover = false
 
-    internal var currentSection = "dashboard"
+    internal var currentSection = "user_home"
     internal var showMobileMenu = false
+
+    // Tickets state (User Center /tickets)
+    internal var ticketsList = JSONArray()
+    internal var ticketsTotal = 0
+    internal var ticketStatusFilter = ""
+    internal var showCreateTicketForm = false
+    internal var activeTicketDetail: JSONObject? = null
+    internal var activeLoginCerts = JSONArray()
 
     // Profile Editor Component instance
     internal lateinit var profileEditor: ProfileEditorComponent
@@ -198,7 +208,15 @@ class MainActivity : Activity() {
         rebuildUi()
 
         handleIncomingDeepLink(intent)
-        if (!isLoggedIn && ApiClient.storedCertificate != null) {
+        if (isLoggedIn) {
+            val nowSec = System.currentTimeMillis() / 1000L
+            val cert = ApiClient.storedCertificate
+            if ((ApiClient.tokenExpiresAtEpochSec in 1..(nowSec + 300L)) && cert != null && !cert.isExpired()) {
+                loginWithStoredCertificate()
+            } else {
+                completeLoginAndLoadAccounts()
+            }
+        } else if (ApiClient.storedCertificate != null && !ApiClient.storedCertificate!!.isExpired()) {
             loginWithStoredCertificate()
         }
     }
@@ -253,10 +271,29 @@ class MainActivity : Activity() {
         val savedAdmin = prefs.getString("admin_url", null)
         if (!savedMgmt.isNullOrBlank()) ApiClient.managementUrl = savedMgmt
         if (!savedAdmin.isNullOrBlank()) ApiClient.adminUrl = savedAdmin
+        val savedTheme = prefs.getString("theme_mode", null)
+        if (!savedTheme.isNullOrBlank()) UiKit.themeMode = savedTheme
         ApiClient.token = prefs.getString("token", "") ?: ""
         ApiClient.tokenExpiresAtEpochSec = prefs.getLong("token_expires_at", 0L)
         currentAccountId = prefs.getString("current_account_id", "") ?: ""
         currentAccountName = prefs.getString("current_account_name", "") ?: ""
+        currentAccountSlug = prefs.getString("current_account_slug", "") ?: ""
+        val savedUserStr = prefs.getString("current_user_json", null)
+        if (!savedUserStr.isNullOrBlank()) {
+            try {
+                currentUser = JSONObject(savedUserStr)
+            } catch (_: Exception) {
+                currentUser = JSONObject()
+            }
+        }
+        val savedAccsStr = prefs.getString("accounts_json", null)
+        if (!savedAccsStr.isNullOrBlank()) {
+            try {
+                accounts = JSONArray(savedAccsStr)
+            } catch (_: Exception) {
+                accounts = JSONArray()
+            }
+        }
         val certStr = prefs.getString("stored_certificate", null)
         if (!certStr.isNullOrBlank()) {
             try {
@@ -265,6 +302,10 @@ class MainActivity : Activity() {
                 ApiClient.storedCertificate = null
             }
         }
+        if (ApiClient.token.isNotEmpty()) {
+            isLoggedIn = true
+            currentSection = "user_home"
+        }
     }
 
     internal fun saveLocalAuthState() {
@@ -272,17 +313,24 @@ class MainActivity : Activity() {
         prefs.edit()
             .putString("management_url", ApiClient.managementUrl)
             .putString("admin_url", ApiClient.adminUrl)
+            .putString("theme_mode", UiKit.themeMode)
             .putString("token", ApiClient.token)
             .putLong("token_expires_at", ApiClient.tokenExpiresAtEpochSec)
             .putString("current_account_id", currentAccountId)
             .putString("current_account_name", currentAccountName)
+            .putString("current_account_slug", currentAccountSlug)
+            .putString("current_user_json", currentUser.toString())
+            .putString("accounts_json", accounts.toString())
             .putString("stored_certificate", ApiClient.storedCertificate?.toJson()?.toString() ?: "")
             .apply()
     }
 
     internal fun completeLoginAndLoadAccounts() {
         isLoggedIn = true
+        if (currentSection.isEmpty()) currentSection = "user_home"
         statusMessage = ""
+        saveLocalAuthState()
+        rebuildUi()
         runAsync(
             work = {
                 val uRes = ApiClient.request(ApiClient.managementUrl, "/user/info")
@@ -290,12 +338,17 @@ class MainActivity : Activity() {
                 Pair(uRes, aRes)
             },
             done = { (uRes, aRes) ->
+                if (uRes.code == 401 && ApiClient.storedCertificate != null && !ApiClient.storedCertificate!!.isExpired()) {
+                    loginWithStoredCertificate()
+                    return@runAsync
+                }
                 if (uRes.ok) {
                     currentUser = uRes.json.optJSONObject("user") ?: uRes.json
                 }
                 if (aRes.ok) {
-                    accounts = aRes.json.optJSONArray("accounts") ?: JSONArray()
+                    accounts = aRes.optJsonArray()
                 }
+                saveLocalAuthState()
                 rebuildUi()
             }
         )
@@ -314,9 +367,8 @@ class MainActivity : Activity() {
             navigateToSection("admin_dashboard")
         } else {
             isSuperAdminMode = false
-            currentAccountId = ""
-            currentAccountName = ""
-            loadAccountsListOnly()
+            currentSection = "user_home"
+            completeLoginAndLoadAccounts()
         }
     }
 
@@ -325,7 +377,8 @@ class MainActivity : Activity() {
             work = { ApiClient.request(ApiClient.managementUrl, "/account/list") },
             done = { res ->
                 if (res.ok) {
-                    accounts = res.json.optJSONArray("accounts") ?: JSONArray()
+                    accounts = res.optJsonArray()
+                    saveLocalAuthState()
                 }
                 rebuildUi()
             }
@@ -338,11 +391,15 @@ class MainActivity : Activity() {
             done = {
                 ApiClient.token = ""
                 ApiClient.tokenExpiresAtEpochSec = 0L
+                currentUser = JSONObject()
+                accounts = JSONArray()
                 isLoggedIn = false
                 isSuperAdminMode = false
                 isSuperAdminTakeover = false
                 currentAccountId = ""
                 currentAccountName = ""
+                currentAccountSlug = ""
+                currentSection = "user_home"
                 authStep = "email"
                 saveLocalAuthState()
                 rebuildUi()
@@ -521,6 +578,7 @@ class MainActivity : Activity() {
                 setPadding(UiKit.dp(this@MainActivity, 8), UiKit.dp(this@MainActivity, 4), UiKit.dp(this@MainActivity, 8), UiKit.dp(this@MainActivity, 4))
                 setOnClickListener {
                     UiKit.themeMode = mKey
+                    saveLocalAuthState()
                     rebuildUi()
                 }
             }
@@ -529,12 +587,32 @@ class MainActivity : Activity() {
         return bar
     }
 
+    internal fun isUserCenterMode(): Boolean {
+        if (isSuperAdminMode) return false
+        return currentSection == "user_home" || currentSection == "security" || currentSection == "tickets" || currentAccountId.isEmpty()
+    }
+
+    internal fun isSuperAdminUser(): Boolean {
+        val rc = currentUser.optString("role_code").ifEmpty { currentUser.optString("role") }
+        return rc == "superadmin"
+    }
+
+    internal fun enterAccountCenter(accId: String, accName: String, accSlug: String, targetSection: String = "dashboard") {
+        currentAccountId = accId
+        currentAccountName = accName
+        currentAccountSlug = accSlug
+        isSuperAdminMode = false
+        isSuperAdminTakeover = false
+        saveLocalAuthState()
+        navigateToSection(targetSection)
+    }
+
     internal fun buildWebFooterDisclaimer(onLoginBg: Boolean = true): View {
         val fg = if (onLoginBg) 0xCCFFFFFF.toInt() else UiKit.TEXT_TERTIARY
         return UiKit.vBox(this).apply {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(UiKit.dp(this@MainActivity, 12), UiKit.dp(this@MainActivity, 20), UiKit.dp(this@MainActivity, 12), UiKit.dp(this@MainActivity, 16))
-            addView(UiKit.label(this@MainActivity, "本项目与 ClassIsland 官方无关，ClassIsland 是 HelloWRC 开发的自由软件。", 11f, fg).apply {
+            addView(UiKit.label(this@MainActivity, "本项目与 ClassIsland 官方无关，ClassIsland 是由 ClassIsland 社区开发和维护的开源软件", 11f, fg).apply {
                 gravity = Gravity.CENTER
             })
             addView(UiKit.label(this@MainActivity, "本项目由 MINIOpenSource 开发和维护，并开源在 GitHub", 11f, fg).apply {
@@ -546,7 +624,7 @@ class MainActivity : Activity() {
 
     fun rebuildUi() {
         UiKit.syncSystemNightMode(this)
-        val isOnLoginSurface = !isLoggedIn || (!isSuperAdminMode && currentAccountId.isEmpty())
+        val isOnLoginSurface = !isLoggedIn
         updateSystemBarsAppearance(isOnLoginSurface)
         rootContainer.removeAllViews()
         rootContainer.setBackgroundColor(UiKit.BG_ROOT)
@@ -556,9 +634,10 @@ class MainActivity : Activity() {
             return
         }
 
-        if (!isSuperAdminMode && currentAccountId.isEmpty()) {
-            rootContainer.addView(buildAccountSelectionView())
-            return
+        if (!isSuperAdminMode && currentAccountId.isEmpty() &&
+            currentSection != "user_home" && currentSection != "security" && currentSection != "tickets"
+        ) {
+            currentSection = "user_home"
         }
 
         rootContainer.addView(buildTopBar())
@@ -635,20 +714,12 @@ class MainActivity : Activity() {
             })
         }
 
-        val logoBox = TextView(this).apply {
-            text = if (isSuperAdminMode) "A" else "M"
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            background = UiKit.roundedBg(UiKit.ACCENT_BLUE, 6, this@MainActivity)
-            layoutParams = LinearLayout.LayoutParams(UiKit.dp(this@MainActivity, 26), UiKit.dp(this@MainActivity, 26)).apply {
-                rightMargin = UiKit.dp(this@MainActivity, 8)
-            }
+        val shellTitle = when {
+            isSuperAdminMode -> "MINI ClassIsland 超级管理平台"
+            isUserCenterMode() -> "MINI ClassIsland 用户中心"
+            currentAccountName.isNotEmpty() -> "账户中心 · $currentAccountName"
+            else -> "MINI ClassIsland 账户中心"
         }
-        bar.addView(logoBox)
-
-        val shellTitle = if (isSuperAdminMode) "MINI ClassIsland 超级管理平台" else "MINI ClassIsland 管理面板"
         bar.addView(UiKit.label(this, shellTitle, 14f, UiKit.TEXT_PRIMARY, true).apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
@@ -660,7 +731,7 @@ class MainActivity : Activity() {
         })
 
         val userName = currentUser.optString("display_name").ifEmpty { currentUser.optString("username", "管理员") }
-        val pillLabel = if (isSuperAdminMode) userName else currentAccountName.ifEmpty { userName }
+        val pillLabel = userName
         val userPill = UiKit.hBox(this, 4).apply {
             background = UiKit.roundedBg(UiKit.BG_SUBTLE, 6, this@MainActivity, UiKit.BORDER_COLOR, 1)
             setPadding(UiKit.dp(this@MainActivity, 8), UiKit.dp(this@MainActivity, 4), UiKit.dp(this@MainActivity, 8), UiKit.dp(this@MainActivity, 4))
@@ -703,9 +774,12 @@ class MainActivity : Activity() {
         val topRow = UiKit.hBox(this)
         val infoCol = UiKit.vBox(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            addView(UiKit.label(this@MainActivity, "当前登录: $uName ${if (uMail.isNotEmpty()) "($uMail)" else ""}", 13f, UiKit.TEXT_PRIMARY, true))
-            if (!isSuperAdminMode && currentAccountId.isNotEmpty()) {
-                addView(UiKit.label(this@MainActivity, "当前账户: $currentAccountName", 12f, UiKit.TEXT_SECONDARY))
+            addView(UiKit.label(this@MainActivity, uName, 14f, UiKit.TEXT_PRIMARY, true))
+            if (uMail.isNotEmpty()) {
+                addView(UiKit.label(this@MainActivity, uMail, 12f, UiKit.TEXT_SECONDARY))
+            }
+            if (!isSuperAdminMode && !isUserCenterMode() && currentAccountId.isNotEmpty()) {
+                addView(UiKit.label(this@MainActivity, "当前账户中心: $currentAccountName", 12f, UiKit.TEXT_TERTIARY))
             }
         }
         topRow.addView(infoCol)
@@ -717,48 +791,40 @@ class MainActivity : Activity() {
         card.addView(UiKit.divider(this, 8))
 
         val actionsRow = UiKit.hBox(this)
-        actionsRow.addView(UiKit.button(this, "切换账户", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
+        actionsRow.addView(UiKit.button(this, "用户中心主页", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
             showUserMenu = false
             isSuperAdminMode = false
             isSuperAdminTakeover = false
-            currentAccountId = ""
-            currentAccountName = ""
-            saveLocalAuthState()
-            loadAccountsListOnly()
+            navigateToSection("user_home")
         })
-        actionsRow.addView(UiKit.button(this, "安全设置", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
+        actionsRow.addView(UiKit.button(this, "个人资料与安全", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
             showUserMenu = false
             isSuperAdminMode = false
-            if (currentAccountId.isEmpty() && accounts.length() > 0) {
-                val first = accounts.optJSONObject(0)
-                if (first != null) {
-                    currentAccountId = first.optString("id")
-                    currentAccountName = first.optString("name")
-                    saveLocalAuthState()
-                }
-            }
             navigateToSection("security")
         })
-        actionsRow.addView(UiKit.button(
-            this,
-            if (isSuperAdminMode) "返回集控管理面板" else "超级管理平台",
-            UiKit.BTN_MUTED,
-            UiKit.ACCENT_BLUE,
-            true
-        ) {
+        actionsRow.addView(UiKit.button(this, "我的工单", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
             showUserMenu = false
-            if (isSuperAdminMode) {
-                isSuperAdminMode = false
-                if (currentAccountId.isNotEmpty()) {
-                    navigateToSection("dashboard")
-                } else {
-                    rebuildUi()
-                }
-            } else {
-                isSuperAdminMode = true
-                navigateToSection("admin_dashboard")
-            }
+            isSuperAdminMode = false
+            navigateToSection("tickets")
         })
+        if (isSuperAdminUser() || isSuperAdminMode) {
+            actionsRow.addView(UiKit.button(
+                this,
+                if (isSuperAdminMode) "返回用户中心" else "超级管理面板",
+                UiKit.BTN_MUTED,
+                UiKit.ACCENT_BLUE,
+                true
+            ) {
+                showUserMenu = false
+                if (isSuperAdminMode) {
+                    isSuperAdminMode = false
+                    navigateToSection("user_home")
+                } else {
+                    isSuperAdminMode = true
+                    navigateToSection("admin_dashboard")
+                }
+            })
+        }
         actionsRow.addView(UiKit.button(this, "退出登录", UiKit.BTN_MUTED, UiKit.ACCENT_RED, true) {
             showUserMenu = false
             logoutCurrentUser()
@@ -773,6 +839,37 @@ class MainActivity : Activity() {
         val box = UiKit.vBox(this).apply {
             setPadding(p + safeInsetLeftPx, p, p, p + safeInsetBottomPx)
         }
+
+        // Sidebar Header matching web/components/Sidebar.tsx (.sidebar-header)
+        val headerRow = UiKit.hBox(this).apply {
+            setPadding(UiKit.dp(this@MainActivity, 8), UiKit.dp(this@MainActivity, 6), UiKit.dp(this@MainActivity, 8), UiKit.dp(this@MainActivity, 10))
+        }
+        val logoBox = TextView(this).apply {
+            text = if (isSuperAdminMode) "A" else "M"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            background = UiKit.roundedBg(UiKit.ACCENT_BLUE, 8, this@MainActivity)
+            layoutParams = LinearLayout.LayoutParams(UiKit.dp(this@MainActivity, 32), UiKit.dp(this@MainActivity, 32)).apply {
+                rightMargin = UiKit.dp(this@MainActivity, 10)
+            }
+        }
+        headerRow.addView(logoBox)
+        val titleCol = UiKit.vBox(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            addView(UiKit.label(this@MainActivity, "MINI ClassIsland", 14f, UiKit.TEXT_PRIMARY, true))
+            val subTitle = when {
+                isSuperAdminMode -> "超级管理平台"
+                isUserCenterMode() -> "用户中心"
+                currentAccountSlug.isNotEmpty() -> currentAccountSlug
+                else -> "账户中心"
+            }
+            addView(UiKit.label(this@MainActivity, subTitle, 11f, UiKit.TEXT_TERTIARY))
+        }
+        headerRow.addView(titleCol)
+        box.addView(headerRow)
+        box.addView(UiKit.divider(this, 4))
 
         if (isSuperAdminMode) {
             box.addView(UiKit.label(this, "超级管理平台", 11f, UiKit.TEXT_TERTIARY, true).apply {
@@ -789,18 +886,117 @@ class MainActivity : Activity() {
                 box.addView(buildSidebarNavItem(key, title))
             }
             box.addView(UiKit.divider(this, 10))
-            box.addView(UiKit.iconTextButton(this, MdsIcon.ARROW_LEFT, "返回集控管理面板", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, false) {
+            box.addView(UiKit.iconTextButton(this, MdsIcon.ARROW_LEFT, "返回用户中心", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, false) {
                 isSuperAdminMode = false
-                if (currentAccountId.isNotEmpty()) {
-                    navigateToSection("dashboard")
-                } else {
-                    rebuildUi()
-                }
+                navigateToSection("user_home")
             }.apply {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             })
             return box
         }
+
+        // User Center Mode Sidebar (matching web/components/Sidebar.tsx USER_CENTER_SECTIONS + 选择跳转账户中心)
+        if (isUserCenterMode()) {
+            box.addView(UiKit.label(this, "用户中心", 11f, UiKit.TEXT_TERTIARY, true).apply {
+                setPadding(UiKit.dp(this@MainActivity, 10), UiKit.dp(this@MainActivity, 8), UiKit.dp(this@MainActivity, 10), UiKit.dp(this@MainActivity, 4))
+            })
+            val userCenterItems = listOf(
+                "user_home" to "账户主页",
+                "security" to "个人资料与安全",
+                "tickets" to "我的工单"
+            )
+            for ((key, title) in userCenterItems) {
+                box.addView(buildSidebarNavItem(key, title))
+            }
+            if (isSuperAdminUser()) {
+                box.addView(buildSidebarActionItem("超级管理面板") {
+                    isSuperAdminMode = true
+                    navigateToSection("admin_dashboard")
+                })
+            }
+
+            box.addView(UiKit.label(this, "选择跳转账户中心 (${accounts.length()})", 11f, UiKit.TEXT_TERTIARY, true).apply {
+                setPadding(UiKit.dp(this@MainActivity, 10), UiKit.dp(this@MainActivity, 14), UiKit.dp(this@MainActivity, 10), UiKit.dp(this@MainActivity, 4))
+            })
+            if (accounts.length() == 0) {
+                box.addView(UiKit.label(this, "暂无已关联账户", 12f, UiKit.TEXT_TERTIARY).apply {
+                    setPadding(UiKit.dp(this@MainActivity, 12), UiKit.dp(this@MainActivity, 6), UiKit.dp(this@MainActivity, 12), UiKit.dp(this@MainActivity, 6))
+                })
+            } else {
+                for (i in 0 until accounts.length()) {
+                    val acc = accounts.optJSONObject(i) ?: continue
+                    val aId = acc.optString("id")
+                    val aName = acc.optString("name", "未命名账户")
+                    val aSlug = acc.optString("slug", "")
+                    val isCurr = aId == currentAccountId && aId.isNotEmpty()
+                    val jumpRow = UiKit.hBox(this, 8).apply {
+                        background = UiKit.roundedBg(
+                            if (isCurr) UiKit.BG_ACCENT_SUBTLE else Color.TRANSPARENT,
+                            6,
+                            this@MainActivity,
+                            if (isCurr) UiKit.ACCENT_BLUE else Color.TRANSPARENT,
+                            if (isCurr) 1 else 0
+                        )
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                            bottomMargin = UiKit.dp(this@MainActivity, 4)
+                        }
+                        setOnClickListener {
+                            enterAccountCenter(aId, aName, aSlug, "dashboard")
+                        }
+                    }
+                    val infoCol = UiKit.vBox(this).apply {
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        addView(UiKit.label(this@MainActivity, aName, 13f, UiKit.TEXT_PRIMARY, true))
+                        if (aSlug.isNotEmpty()) {
+                            addView(UiKit.label(this@MainActivity, aSlug, 11f, UiKit.TEXT_TERTIARY))
+                        }
+                    }
+                    jumpRow.addView(infoCol)
+                    jumpRow.addView(OfficialIcons.imageView(this, MdsIcon.ARROW_RIGHT, UiKit.TEXT_TERTIARY, 15))
+                    box.addView(jumpRow)
+                }
+            }
+            return box
+        }
+
+        // Account Center Mode Sidebar (matching web/components/Sidebar.tsx .sidebar-tenant-box + ACCOUNT_CENTER_SECTIONS)
+        val tenantBox = UiKit.subCard(this, 10).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = UiKit.dp(this@MainActivity, 6)
+            }
+        }
+        tenantBox.addView(UiKit.iconTextButton(this, MdsIcon.ARROW_LEFT, "返回用户中心", UiKit.BTN_MUTED, UiKit.ACCENT_BLUE, true) {
+            navigateToSection("user_home")
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        })
+        tenantBox.addView(UiKit.label(this, "当前账户中心", 11f, UiKit.TEXT_TERTIARY, true).apply {
+            setPadding(0, UiKit.dp(this@MainActivity, 8), 0, UiKit.dp(this@MainActivity, 4))
+        })
+        tenantBox.addView(UiKit.label(this, currentAccountName.ifEmpty { "未选择账户" }, 13f, UiKit.TEXT_PRIMARY, true))
+        if (accounts.length() > 1) {
+            val accOpts = mutableListOf<Pair<String, String>>()
+            for (i in 0 until accounts.length()) {
+                val acc = accounts.optJSONObject(i) ?: continue
+                accOpts.add(acc.optString("id") to acc.optString("name"))
+            }
+            tenantBox.addView(UiKit.spacer(this, 4))
+            tenantBox.addView(UiKit.chipRow(this, accOpts, currentAccountId) { selId ->
+                for (i in 0 until accounts.length()) {
+                    val acc = accounts.optJSONObject(i) ?: continue
+                    if (acc.optString("id") == selId) {
+                        enterAccountCenter(
+                            selId,
+                            acc.optString("name"),
+                            acc.optString("slug"),
+                            currentSection
+                        )
+                        break
+                    }
+                }
+            })
+        }
+        box.addView(tenantBox)
 
         val navGroups = listOf(
             "概览" to listOf(
@@ -824,13 +1020,10 @@ class MainActivity : Activity() {
                 "pairing" to "配对码管理",
                 "prereg" to "预注册客户端"
             ),
-            "账户" to listOf(
-                "account" to "账户概览",
+            "账户配置" to listOf(
+                "account" to "账户基础信息",
                 "access" to "访问控制",
                 "invitations" to "邀请管理"
-            ),
-            "安全" to listOf(
-                "security" to "安全设置"
             )
         )
 
@@ -844,6 +1037,18 @@ class MainActivity : Activity() {
         }
 
         return box
+    }
+
+    internal fun buildSidebarActionItem(title: String, onClick: () -> Unit): View {
+        return UiKit.hBox(this).apply {
+            background = UiKit.roundedBg(Color.TRANSPARENT, 6, this@MainActivity)
+            setPadding(UiKit.dp(this@MainActivity, 12), UiKit.dp(this@MainActivity, 9), UiKit.dp(this@MainActivity, 12), UiKit.dp(this@MainActivity, 9))
+            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            lp.bottomMargin = UiKit.dp(this@MainActivity, 2)
+            layoutParams = lp
+            addView(UiKit.label(this@MainActivity, title, 13f, UiKit.TEXT_PRIMARY, false))
+            setOnClickListener { onClick() }
+        }
     }
 
     internal fun buildSidebarNavItem(key: String, title: String): View {
@@ -890,6 +1095,8 @@ class MainActivity : Activity() {
             return
         }
         when (sec) {
+            "user_home" -> completeLoginAndLoadAccounts()
+            "tickets" -> loadTicketsData()
             "dashboard" -> refreshDashboardData()
             "clients", "notifications" -> loadClientsData()
             "audit" -> loadAuditLogsData()
@@ -948,6 +1155,8 @@ class MainActivity : Activity() {
         }
 
         when {
+            currentSection == "user_home" -> wrap.addView(buildUserCenterHomeView())
+            currentSection == "tickets" -> wrap.addView(buildTicketsView())
             currentSection == "dashboard" -> wrap.addView(buildDashboardView())
             currentSection.startsWith("res_") -> wrap.addView(profileEditor.buildView(this, isWideTabletLayout()))
             currentSection == "clients" -> wrap.addView(buildClientsView())

@@ -29,7 +29,7 @@ fun MainActivity.refreshDashboardData() {
         },
         done = { (cRes, pRes, tail) ->
             val (aRes, resTotal) = tail
-            val cArr = cRes.json.optJSONArray("clients") ?: JSONArray()
+            val cArr = cRes.optJsonArray()
             clientsArray = cArr
             dashTotalClients = cArr.length()
             var on = 0
@@ -37,8 +37,17 @@ fun MainActivity.refreshDashboardData() {
                 if (cArr.optJSONObject(i)?.optString("status") == "online") on++
             }
             dashOnline = on
-            dashPendingPairing = pRes.json.optJSONArray("requests")?.length() ?: 0
-            dashRecentAudits = aRes.json.optJSONArray("logs")?.length() ?: 0
+            val pArr = pRes.optJsonArray()
+            var pendingCnt = 0
+            for (i in 0 until pArr.length()) {
+                val pItem = pArr.optJSONObject(i) ?: continue
+                val st = pItem.optString("status")
+                if (st == "pending" || (st.isEmpty() && !pItem.optBoolean("approved", false))) {
+                    pendingCnt++
+                }
+            }
+            dashPendingPairing = pendingCnt
+            dashRecentAudits = aRes.optJsonArray().length()
             dashTotalResources = resTotal
             rebuildUi()
         }
@@ -181,7 +190,7 @@ fun MainActivity.loadClientsData() {
         work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/list") },
         done = { r ->
             if (r.ok) {
-                clientsArray = r.json.optJSONArray("clients") ?: JSONArray()
+                clientsArray = r.optJsonArray()
                 if (activeClient == null && clientsArray.length() > 0) {
                     selectClientForInspector(clientsArray.optJSONObject(0))
                     return@runAsync
@@ -201,13 +210,13 @@ fun MainActivity.selectClientForInspector(c: JSONObject?) {
     val uid = c.optString("uid")
     runAsync(
         work = {
-            val p = ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/profile")
+            val p = ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/config")
             val s = ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/config-uploads")
             Pair(p, s)
         },
         done = { (p, s) ->
-            clientProfileObj = p.json.optJSONObject("profile") ?: JSONObject()
-            clientSnapshots = s.json.optJSONArray("uploads") ?: JSONArray()
+            clientProfileObj = p.json.optJSONObject("profile_config") ?: p.json.optJSONObject("profile") ?: JSONObject()
+            clientSnapshots = s.optJsonArray()
             rebuildUi()
         }
     )
@@ -409,7 +418,7 @@ fun MainActivity.buildClientInspectorCard(): View {
             c.addView(UiKit.button(this, "保存基本设置", UiKit.ACCENT_BLUE, Color.WHITE, true) {
                 val b = JSONObject().put("display_name", dnEd.text.toString()).put("client_id", cidEd.text.toString())
                 runAsync(
-                    work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}", "PUT", b) },
+                    work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/rename", "POST", b) },
                     done = { r ->
                         setFeedback(if (r.ok) "已保存客户端信息" else r.error, !r.ok)
                         loadClientsData()
@@ -421,19 +430,33 @@ fun MainActivity.buildClientInspectorCard(): View {
             val cmdRow = UiKit.hBox(this)
             cmdRow.addView(UiKit.button(this, "强制同步配置", UiKit.ACCENT_BLUE, Color.WHITE, true) {
                 runAsync(
-                    work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/command/force-sync") },
+                    work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/command/update-data", "POST", JSONObject()) },
                     done = { setFeedback("已下发强制同步指令") }
                 )
             })
             cmdRow.addView(UiKit.button(this, "重启客户端", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
                 runAsync(
-                    work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/command/restart") },
+                    work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/command/restart", "POST", JSONObject()) },
                     done = { setFeedback("已下发重启指令") }
                 )
             })
             cmdRow.addView(UiKit.button(this, "断开连接", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
                 runAsync(
                     work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/disconnect", "POST", JSONObject()) },
+                    done = { loadClientsData() }
+                )
+            })
+            val isDisabled = cur.optBoolean("is_disabled", false)
+            cmdRow.addView(UiKit.button(
+                this,
+                if (isDisabled) "启用客户端" else "禁用客户端",
+                UiKit.BTN_MUTED,
+                UiKit.TEXT_PRIMARY,
+                true
+            ) {
+                val actionPath = if (isDisabled) "enable" else "disable"
+                runAsync(
+                    work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/$actionPath", "POST", JSONObject()) },
                     done = { loadClientsData() }
                 )
             })
@@ -450,18 +473,19 @@ fun MainActivity.buildClientInspectorCard(): View {
         }
         "profile" -> {
             val fields = listOf(
-                "cp_resource_name" to "课表配置",
-                "tl_resource_name" to "时间表配置",
-                "sub_resource_name" to "科目配置",
-                "pol_resource_name" to "策略配置",
-                "ds_resource_name" to "默认设置",
-                "com_resource_name" to "组件配置",
-                "cred_resource_name" to "凭据配置"
+                "ClassPlan" to "课表配置",
+                "TimeLayout" to "时间表配置",
+                "Subjects" to "科目配置",
+                "Policy" to "策略配置",
+                "DefaultSettings" to "默认设置",
+                "Components" to "组件配置",
+                "Credentials" to "凭据配置"
             )
             val editors = mutableMapOf<String, android.widget.EditText>()
             for ((fieldKey, fieldTitle) in fields) {
                 c.addView(UiKit.label(this, fieldTitle, 12f, UiKit.TEXT_SECONDARY, true))
-                val ed = UiKit.input(this, "资源名称 (留空使用默认)", clientProfileObj.optString(fieldKey))
+                val curVal = clientProfileObj.optString(fieldKey)
+                val ed = UiKit.input(this, "资源名称，留空使用默认", curVal)
                 editors[fieldKey] = ed
                 c.addView(ed)
             }
@@ -470,40 +494,55 @@ fun MainActivity.buildClientInspectorCard(): View {
                 val body = JSONObject()
                 for ((k, ed) in editors) body.put(k, ed.text.toString().trim())
                 runAsync(
-                    work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/profile", "PUT", body) },
+                    work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/config", "POST", body) },
                     done = { r -> setFeedback(if (r.ok) "已保存客户端档案分配" else r.error, !r.ok) }
                 )
             })
         }
         "snapshots" -> {
             c.addView(UiKit.label(this, "向客户端请求上传当前配置快照:", 12f, UiKit.TEXT_SECONDARY, true))
-            val typeLabels = listOf(1 to "课表", 2 to "时间表", 3 to "科目", 4 to "策略", 5 to "设置", 6 to "组件")
+            val typeLabels = CONFIG_TYPE_LABELS.entries.map { it.key to it.value }
             val sRow = UiKit.hBox(this)
             for ((tCode, tName) in typeLabels) {
                 sRow.addView(UiKit.button(this, "抓取$tName", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
                     runAsync(
                         work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/client/${ApiClient.enc(uid)}/command/get-config?config_type=$tCode") },
-                        done = { setFeedback("已下发抓取 [$tName] 指令") }
+                        done = { setFeedback("已下发抓取指令") }
                     )
                 })
             }
             c.addView(sRow)
             for (i in 0 until clientSnapshots.length()) {
                 val snap = clientSnapshots.optJSONObject(i) ?: continue
+                val reqGuid = snap.optString("request_guid")
+                val cType = snap.optInt("config_type", 1)
+                val typeName = snap.optString("config_type_name").ifEmpty { CONFIG_TYPE_LABELS[cType] ?: "配置快照" }
+                val uploadedAt = snap.optString("uploaded_at", "").take(19).replace('T', ' ')
                 val sr = UiKit.subCard(this, 10)
                 val h = UiKit.hBox(this)
-                h.addView(UiKit.label(this, "类型 #${snap.optInt("config_type")} · ${formatTs(snap.optLong("created_at"))}", 12f, UiKit.TEXT_PRIMARY).apply {
+                h.addView(UiKit.label(this, "$typeName · ${uploadedAt.ifEmpty { snap.optString("status", "等待中") }}", 12f, UiKit.TEXT_PRIMARY).apply {
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                 })
                 h.addView(UiKit.button(this, "查看内容", UiKit.BTN_MUTED, UiKit.ACCENT_BLUE, true) {
-                    snapshotDetailText = snap.optString("payload")
-                    rebuildUi()
+                    val directPayload = snap.optString("payload")
+                    if (directPayload.isNotEmpty()) {
+                        snapshotDetailText = directPayload
+                        rebuildUi()
+                    } else if (reqGuid.isNotEmpty()) {
+                        runAsync(
+                            work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/config-upload/${ApiClient.enc(reqGuid)}") },
+                            done = { dRes ->
+                                snapshotDetailText = dRes.json.optString("payload").ifEmpty { dRes.rawText }
+                                rebuildUi()
+                            }
+                        )
+                    }
                 })
                 sr.addView(h)
                 c.addView(sr)
             }
             if (snapshotDetailText.isNotEmpty()) {
-                c.addView(UiKit.input(this, "快照 JSON", snapshotDetailText, multiLine = true))
+                c.addView(UiKit.input(this, "配置快照内容", snapshotDetailText, multiLine = true))
             }
         }
         "notify" -> {
@@ -634,11 +673,11 @@ fun MainActivity.buildNotificationsView(fixedClientUid: String?): View {
 
 // ==================== 6. AUDIT LOGS ====================
 fun MainActivity.loadAuditLogsData() {
-    val q = if (auditEventFilter == "all") "?limit=200" else "?limit=200&event=$auditEventFilter"
+    val q = if (auditEventFilter == "all") "?limit=200" else "?limit=200&event_type=$auditEventFilter"
     runAsync(
         work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/audit/list$q") },
         done = { r ->
-            auditLogs = r.json.optJSONArray("logs") ?: JSONArray()
+            auditLogs = r.optJsonArray()
             rebuildUi()
         }
     )
@@ -686,11 +725,13 @@ fun MainActivity.buildAuditView(): View {
         val log = auditLogs.optJSONObject(i) ?: continue
         val row = UiKit.subCard(this, 10)
         val h = UiKit.hBox(this)
-        val ev = log.optInt("event", 0)
-        h.addView(UiKit.badge(this, AUDIT_EVENT_LABELS[ev] ?: "事件#$ev", "info"))
+        val ev = log.optInt("event_type", log.optInt("event", 0))
+        val evLabel = log.optString("event_name").ifEmpty { AUDIT_EVENT_LABELS[ev] ?: "事件#$ev" }
+        val clientUid = log.optString("client_uid").ifEmpty { log.optString("client_id", "-") }
+        h.addView(UiKit.badge(this, evLabel, "info"))
         h.addView(UiKit.label(
             this,
-            "  ${log.optString("client_id")} · ${formatTs(log.optLong("timestamp_utc"))}",
+            "  $clientUid · ${formatTs(log.optLong("timestamp_utc"))}",
             12f,
             UiKit.TEXT_PRIMARY,
             true
@@ -698,7 +739,8 @@ fun MainActivity.buildAuditView(): View {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         h.addView(UiKit.button(this, "查看载荷", UiKit.BTN_MUTED, UiKit.TEXT_SECONDARY, true) {
-            auditPayloadPreview = log.optString("payload", "{}")
+            val decoded = log.optJSONObject("decoded")
+            auditPayloadPreview = decoded?.toString(2) ?: log.optString("payload", "{}")
             rebuildUi()
         })
         row.addView(h)

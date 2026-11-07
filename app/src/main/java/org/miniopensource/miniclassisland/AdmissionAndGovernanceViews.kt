@@ -11,13 +11,13 @@ import org.json.JSONObject
 fun MainActivity.loadPairingData() {
     runAsync(
         work = {
-            val info = ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/info")
+            val st = ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/pairing/status")
             val list = ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/pairing/list")
-            Pair(info, list)
+            Pair(st, list)
         },
-        done = { (info, list) ->
-            if (info.ok) accountInfoObj = info.json
-            pairingList = list.json.optJSONArray("requests") ?: JSONArray()
+        done = { (st, list) ->
+            if (st.ok) accountInfoObj = st.json
+            pairingList = list.optJsonArray()
             rebuildUi()
         }
     )
@@ -34,20 +34,16 @@ fun MainActivity.buildPairingView(): View {
     val modeCard = UiKit.card(this, 16)
     modeCard.addView(UiKit.label(this, "客户端接入注册策略", 14f, UiKit.TEXT_PRIMARY, true))
     modeCard.addView(UiKit.spacer(this, 6))
-    val curMode = accountInfoObj.optString("registration_mode", "open")
+    val curMode = accountInfoObj.optString("registration_mode", "pairing")
     val modeOpts = listOf(
         "open" to "开放自动注册",
         "pairing" to "6位配对码审批",
         "pre_reg" to "仅限预注册白名单"
     )
     modeCard.addView(UiKit.chipRow(this, modeOpts, curMode) { mKey ->
-        val body = JSONObject().apply {
-            put("name", accountInfoObj.optString("name"))
-            put("slug", accountInfoObj.optString("slug"))
-            put("registration_mode", mKey)
-        }
+        val body = JSONObject().put("mode", mKey)
         runAsync(
-            work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/info", "PUT", body) },
+            work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/pairing/mode", "POST", body) },
             done = { loadPairingData() }
         )
     })
@@ -66,14 +62,24 @@ fun MainActivity.buildPairingView(): View {
         val h = UiKit.hBox(this)
         val id = req.optString("id")
         val code = req.optString("pairing_code").ifEmpty { req.optString("code") }
-        val st = req.optString("status")
+        val rawStatus = req.optString("status")
+        val st = when {
+            rawStatus.isNotEmpty() -> rawStatus
+            req.optBoolean("approved", false) -> "approved"
+            else -> "pending"
+        }
+        val stLabel = when (st) {
+            "approved" -> "已批准"
+            "rejected" -> "已拒绝"
+            else -> "待审批"
+        }
         h.addView(UiKit.label(this, code, 18f, UiKit.ACCENT_BLUE, true).apply {
             setPadding(0, 0, UiKit.dp(this@buildPairingView, 10), 0)
         })
-        h.addView(UiKit.label(this, "标识: ${req.optString("client_id")}", 13f, UiKit.TEXT_PRIMARY).apply {
+        h.addView(UiKit.label(this, "标识: ${req.optString("client_id").ifEmpty { "-" }}", 13f, UiKit.TEXT_PRIMARY).apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        h.addView(UiKit.badge(this, st, if (st == "approved") "success" else if (st == "pending") "warning" else "danger"))
+        h.addView(UiKit.badge(this, stLabel, if (st == "approved") "success" else if (st == "pending") "warning" else "danger"))
         if (st == "pending") {
             h.addView(UiKit.button(this, "批准", UiKit.ACCENT_BLUE, Color.WHITE, true) {
                 runAsync(
@@ -99,7 +105,7 @@ fun MainActivity.loadPreRegData() {
     runAsync(
         work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/pre-registration/list") },
         done = { r ->
-            preRegList = r.json.optJSONArray("items") ?: JSONArray()
+            preRegList = r.optJsonArray()
             rebuildUi()
         }
     )
@@ -113,7 +119,7 @@ fun MainActivity.buildPreRegView(): View {
     createCard.addView(UiKit.label(this, "添加预注册客户端", 14f, UiKit.TEXT_PRIMARY, true))
     val labelEd = UiKit.input(this, "备注名称")
     val cidEd = UiKit.input(this, "班级标识")
-    val macEd = UiKit.input(this, "MAC 地址（可选）")
+    val macEd = UiKit.input(this, "物理地址，选填")
     createCard.addView(labelEd)
     createCard.addView(cidEd)
     createCard.addView(macEd)
@@ -121,7 +127,8 @@ fun MainActivity.buildPreRegView(): View {
         val body = JSONObject().apply {
             put("label", labelEd.text.toString().trim())
             put("class_identity", cidEd.text.toString().trim())
-            put("mac_address", macEd.text.toString().trim())
+            val m = macEd.text.toString().trim()
+            if (m.isNotEmpty()) put("mac_address", m)
         }
         runAsync(
             work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/pre-registration/create", "POST", body) },
@@ -139,7 +146,7 @@ fun MainActivity.buildPreRegView(): View {
         val h = UiKit.hBox(this)
         h.addView(UiKit.label(
             this,
-            "${it.optString("label")} (${it.optString("class_identity")}) · MAC: ${it.optString("mac_address").ifEmpty { "-" }}",
+            "${it.optString("label")} · 标识: ${it.optString("class_identity")} · 地址: ${it.optString("mac_address").ifEmpty { "-" }}",
             13f,
             UiKit.TEXT_PRIMARY
         ).apply {
@@ -147,7 +154,7 @@ fun MainActivity.buildPreRegView(): View {
         })
         h.addView(UiKit.button(this, "下载专属配置", UiKit.BTN_MUTED, UiKit.ACCENT_BLUE, true) {
             runAsync(
-                work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/pre-registration/$itemId/preset.json") },
+                work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/pre-registration/$itemId/ManagementPreset.json") },
                 done = { r ->
                     exportedPresetJson = r.rawText
                     rebuildUi()
@@ -180,7 +187,7 @@ fun MainActivity.loadAccountAndQuotasData() {
         },
         done = { (info, q) ->
             if (info.ok) accountInfoObj = info.json
-            quotasList = q.json.optJSONArray("quotas") ?: JSONArray()
+            quotasList = q.optJsonArray()
             rebuildUi()
         }
     )
@@ -188,7 +195,7 @@ fun MainActivity.loadAccountAndQuotasData() {
 
 fun MainActivity.buildAccountSettingsView(): View {
     val box = UiKit.vBox(this)
-    box.addView(UiKit.pageHeader(this, "账户概览", "管理集控账户基本信息、API 密钥与资源配额使用量"))
+    box.addView(UiKit.pageHeader(this, "账户基础信息", "管理集控账户基本信息、接口密钥与资源配额使用量"))
 
     val c = UiKit.card(this, 16)
     c.addView(UiKit.label(this, "基本信息", 14f, UiKit.TEXT_PRIMARY, true))
@@ -196,16 +203,25 @@ fun MainActivity.buildAccountSettingsView(): View {
     val nameEd = UiKit.input(this, "账户名称", accountInfoObj.optString("name", currentAccountName))
     c.addView(nameEd)
     c.addView(UiKit.label(this, "唯一标识", 12f, UiKit.TEXT_SECONDARY, true))
-    val slugEd = UiKit.input(this, "唯一标识", accountInfoObj.optString("slug"))
+    val slugEd = UiKit.input(this, "唯一标识", accountInfoObj.optString("slug", currentAccountSlug))
     c.addView(slugEd)
 
     val r = UiKit.hBox(this)
     r.addView(UiKit.button(this, "保存更改", UiKit.ACCENT_BLUE, Color.WHITE, false) {
-        val b = JSONObject().put("name", nameEd.text.toString()).put("slug", slugEd.text.toString())
+        val n = nameEd.text.toString().trim()
+        val s = slugEd.text.toString().trim()
+        val b = JSONObject().put("name", n).put("slug", s)
         runAsync(
             work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/info", "POST", b) },
-            done = {
-                currentAccountName = nameEd.text.toString()
+            done = { res ->
+                if (res.ok) {
+                    currentAccountName = n
+                    currentAccountSlug = s
+                    saveLocalAuthState()
+                    setFeedback("账户基础信息已保存")
+                } else {
+                    setFeedback(res.error, true)
+                }
                 loadAccountAndQuotasData()
             }
         )
@@ -225,10 +241,14 @@ fun MainActivity.buildAccountSettingsView(): View {
     qCard.addView(UiKit.label(this, "账户配额使用情况", 14f, UiKit.TEXT_PRIMARY, true))
     for (i in 0 until quotasList.length()) {
         val q = quotasList.optJSONObject(i) ?: continue
+        val qKey = q.optString("quota_key").ifEmpty { q.optString("quota_type") }
+        val qLabel = QUOTA_LABELS[qKey] ?: qKey
+        val maxVal = q.optInt("max_value", q.optInt("limit_value", 0))
+        val curVal = q.optInt("current_value", 0)
         val qr = UiKit.subCard(this, 10)
         qr.addView(UiKit.label(
             this,
-            "${q.optString("quota_type").ifEmpty { q.optString("quota_key") }}: ${q.optInt("current_value")} / ${q.optInt("limit_value", q.optInt("max_value"))}",
+            "$qLabel: $curVal / ${if (maxVal < 0) "不限制" else "$maxVal"}",
             13f,
             UiKit.TEXT_PRIMARY,
             true
@@ -243,7 +263,7 @@ fun MainActivity.loadMembersData() {
     runAsync(
         work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/access/list") },
         done = { r ->
-            membersList = r.json.optJSONArray("members") ?: JSONArray()
+            membersList = r.optJsonArray()
             rebuildUi()
         }
     )
@@ -258,27 +278,31 @@ fun MainActivity.buildAccessMembersView(): View {
     for (i in 0 until membersList.length()) {
         val m = membersList.optJSONObject(i) ?: continue
         val uid = m.optString("user_id")
-        val curRole = m.optString("role_in_account").ifEmpty { m.optString("role") }
+        val curRole = m.optString("role_in_account").ifEmpty { m.optString("role", "member") }
+        val roleTitle = ACCOUNT_ROLE_LABELS[curRole] ?: curRole
         val item = UiKit.subCard(this, 12)
         val top = UiKit.hBox(this)
+        val dn = m.optString("display_name").ifEmpty { m.optString("username", uid) }
+        val un = m.optString("username")
         top.addView(UiKit.label(
             this,
-            "${m.optString("display_name")} (@${m.optString("username")})",
+            if (un.isNotEmpty() && un != dn) "$dn · @$un" else dn,
             13f,
             UiKit.TEXT_PRIMARY,
             true
         ).apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        top.addView(UiKit.badge(this, curRole, "info"))
+        top.addView(UiKit.badge(this, roleTitle, "info"))
         item.addView(top)
         item.addView(UiKit.spacer(this, 6))
 
         val h = UiKit.hBox(this)
-        for (rn in listOf("admin", "member", "viewer")) {
+        val roleOptions = listOf("admin" to "管理员", "member" to "成员", "viewer" to "观察者")
+        for ((rn, rLabel) in roleOptions) {
             h.addView(UiKit.button(
                 this,
-                rn,
+                rLabel,
                 if (curRole == rn) UiKit.ACCENT_BLUE else UiKit.BTN_MUTED,
                 if (curRole == rn) Color.WHITE else UiKit.TEXT_PRIMARY,
                 true
@@ -306,7 +330,7 @@ fun MainActivity.loadInvitationsData() {
     runAsync(
         work = { ApiClient.request(ApiClient.managementUrl, "/account/$currentAccountId/invitation/list") },
         done = { r ->
-            invitationsList = r.json.optJSONArray("invitations") ?: JSONArray()
+            invitationsList = r.optJsonArray()
             rebuildUi()
         }
     )
@@ -353,11 +377,13 @@ fun MainActivity.buildInvitationsView(): View {
     for (i in 0 until invitationsList.length()) {
         val inv = invitationsList.optJSONObject(i) ?: continue
         val invId = inv.optString("id")
+        val rKey = inv.optString("role_in_account", inv.optString("role", "member"))
+        val rName = ACCOUNT_ROLE_LABELS[rKey] ?: rKey
         val row = UiKit.subCard(this, 10)
         val h = UiKit.hBox(this)
         h.addView(UiKit.label(
             this,
-            "${inv.optString("code")} · 角色: ${inv.optString("role_in_account", inv.optString("role"))} · 已用: ${inv.optInt("used_count")}/${inv.optInt("max_uses")}",
+            "${inv.optString("code")} · 角色: $rName · 已用: ${inv.optInt("used_count")}/${inv.optInt("max_uses")}",
             13f,
             UiKit.TEXT_PRIMARY,
             true
@@ -379,9 +405,19 @@ fun MainActivity.buildInvitationsView(): View {
 
 fun MainActivity.loadProfileData() {
     runAsync(
-        work = { ApiClient.request(ApiClient.managementUrl, "/user/info") },
-        done = { r ->
-            if (r.ok) currentUser = r.json
+        work = {
+            val uRes = ApiClient.request(ApiClient.managementUrl, "/user/info")
+            val cRes = ApiClient.request(ApiClient.managementUrl, "/user/certificate/list")
+            Pair(uRes, cRes)
+        },
+        done = { (uRes, cRes) ->
+            if (uRes.ok) {
+                currentUser = uRes.json
+                saveLocalAuthState()
+            }
+            if (cRes.ok) {
+                activeLoginCerts = cRes.optJsonArray()
+            }
             rebuildUi()
         }
     )
@@ -389,12 +425,190 @@ fun MainActivity.loadProfileData() {
 
 fun MainActivity.buildSecurityView(): View {
     val box = UiKit.vBox(this)
-    box.addView(UiKit.pageHeader(this, "安全设置", "管理您的个人资料、登录安全证书、登录密码与两步验证"))
+    box.addView(UiKit.pageHeader(this, "个人资料与安全设置", "管理您的个人账号信息、登录密码与两步验证"))
 
-    // 1. 本机登录安全证书状态与轮换卡片
+    // 1. 个人资料卡片 (matching web/app/security/page.tsx)
+    val profileCard = UiKit.card(this, 16)
+    profileCard.addView(UiKit.label(this, "个人资料", 14f, UiKit.TEXT_PRIMARY, true))
+    val uidVal = currentUser.optString("id")
+    if (uidVal.isNotEmpty()) {
+        profileCard.addView(UiKit.label(this, "用户唯一标识", 12f, UiKit.TEXT_SECONDARY, true))
+        profileCard.addView(UiKit.label(this, uidVal, 12f, UiKit.TEXT_TERTIARY).apply {
+            setPadding(0, UiKit.dp(this@buildSecurityView, 2), 0, UiKit.dp(this@buildSecurityView, 6))
+        })
+    }
+    profileCard.addView(UiKit.label(this, "显示名称", 12f, UiKit.TEXT_SECONDARY, true))
+    val dnEd = UiKit.input(this, "显示名称", currentUser.optString("display_name"))
+    profileCard.addView(dnEd)
+    profileCard.addView(UiKit.label(this, "用户名", 12f, UiKit.TEXT_SECONDARY, true))
+    val unEd = UiKit.input(this, "用户名", currentUser.optString("username"))
+    profileCard.addView(unEd)
+    profileCard.addView(UiKit.label(this, "绑定邮箱", 12f, UiKit.TEXT_SECONDARY, true))
+    val mailEd = UiKit.input(this, "绑定邮箱", currentUser.optString("email")).apply {
+        isEnabled = isSuperAdminUser()
+    }
+    profileCard.addView(mailEd)
+    if (!isSuperAdminUser()) {
+        profileCard.addView(UiKit.label(this, "绑定邮箱不支持自行修改，如需变更请联系超级管理员", 11f, UiKit.TEXT_TERTIARY))
+    }
+    profileCard.addView(UiKit.spacer(this, 6))
+    profileCard.addView(UiKit.button(this, "保存资料修改", UiKit.ACCENT_BLUE, Color.WHITE, false) {
+        val newDn = dnEd.text.toString().trim()
+        val newUn = unEd.text.toString().trim()
+        val newMail = mailEd.text.toString().trim()
+        runAsync(
+            work = {
+                var lastRes = HttpRes(true, 200)
+                if (newDn.isNotEmpty() && newDn != currentUser.optString("display_name")) {
+                    lastRes = ApiClient.request(ApiClient.managementUrl, "/user/info/display-name", "POST", JSONObject().put("display_name", newDn))
+                }
+                if (lastRes.ok && newUn.isNotEmpty() && newUn != currentUser.optString("username")) {
+                    lastRes = ApiClient.request(ApiClient.managementUrl, "/user/info/username", "POST", JSONObject().put("username", newUn))
+                }
+                if (lastRes.ok && isSuperAdminUser() && newMail.isNotEmpty() && newMail != currentUser.optString("email")) {
+                    lastRes = ApiClient.request(ApiClient.managementUrl, "/user/info/email", "POST", JSONObject().put("email", newMail))
+                }
+                lastRes
+            },
+            done = { r ->
+                setFeedback(if (r.ok) "个人资料已更新" else r.error, !r.ok)
+                if (r.ok) loadProfileData()
+            }
+        )
+    })
+    box.addView(profileCard)
+
+    // 2. 修改登录密码卡片
+    val pwdCard = UiKit.card(this, 16)
+    pwdCard.addView(UiKit.label(this, "修改登录密码", 14f, UiKit.TEXT_PRIMARY, true))
+    pwdCard.addView(UiKit.label(this, "当前密码", 12f, UiKit.TEXT_SECONDARY, true))
+    val oldPwd = UiKit.input(this, "当前密码", isPassword = true)
+    pwdCard.addView(oldPwd)
+    pwdCard.addView(UiKit.label(this, "新密码", 12f, UiKit.TEXT_SECONDARY, true))
+    val newPwd = UiKit.input(this, "至少 12 个字符", isPassword = true)
+    pwdCard.addView(newPwd)
+    pwdCard.addView(UiKit.button(this, "更新密码", UiKit.ACCENT_BLUE, Color.WHITE, false) {
+        val b = JSONObject().put("old_password", oldPwd.text.toString()).put("new_password", newPwd.text.toString())
+        runAsync(
+            work = { ApiClient.request(ApiClient.managementUrl, "/user/info/password/change", "POST", b) },
+            done = { r -> setFeedback(if (r.ok) "密码修改成功" else r.error, !r.ok) }
+        )
+    })
+    box.addView(pwdCard)
+
+    // 3. 使用邀请码加入集控账户卡片 (matching web/app/security/page.tsx)
+    val inviteJoinCard = UiKit.card(this, 16)
+    inviteJoinCard.addView(UiKit.label(this, "使用邀请码加入集控账户", 14f, UiKit.TEXT_PRIMARY, true))
+    inviteJoinCard.addView(UiKit.label(this, "如果您收到了其他组织或学校的集控账户邀请码，可在此输入邀请码加入该账户中心。", 12f, UiKit.TEXT_SECONDARY).apply {
+        setPadding(0, UiKit.dp(this@buildSecurityView, 4), 0, UiKit.dp(this@buildSecurityView, 8))
+    })
+    val inviteRow = UiKit.hBox(this)
+    val inviteEd = UiKit.input(this, "请输入邀请码...").apply {
+        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            rightMargin = UiKit.dp(this@buildSecurityView, 8)
+        }
+    }
+    inviteRow.addView(inviteEd)
+    inviteRow.addView(UiKit.button(this, "加入账户", UiKit.ACCENT_BLUE, Color.WHITE, true) {
+        val code = inviteEd.text.toString().trim()
+        if (code.isNotEmpty()) {
+            runAsync(
+                work = { ApiClient.request(ApiClient.managementUrl, "/account/invitation/accept", "POST", JSONObject().put("code", code)) },
+                done = { res ->
+                    if (res.ok) {
+                        val joinedId = res.json.optString("account_id")
+                        setFeedback("已成功加入集控账户")
+                        runAsync(
+                            work = { ApiClient.request(ApiClient.managementUrl, "/account/list") },
+                            done = { aRes ->
+                                if (aRes.ok) {
+                                    accounts = aRes.optJsonArray()
+                                    saveLocalAuthState()
+                                }
+                                if (joinedId.isNotEmpty()) {
+                                    var joinedName = "集控账户"
+                                    var joinedSlug = ""
+                                    for (i in 0 until accounts.length()) {
+                                        val a = accounts.optJSONObject(i) ?: continue
+                                        if (a.optString("id") == joinedId) {
+                                            joinedName = a.optString("name", joinedName)
+                                            joinedSlug = a.optString("slug", "")
+                                            break
+                                        }
+                                    }
+                                    enterAccountCenter(joinedId, joinedName, joinedSlug, "dashboard")
+                                } else {
+                                    rebuildUi()
+                                }
+                            }
+                        )
+                    } else {
+                        setFeedback(res.error, true)
+                    }
+                }
+            )
+        }
+    })
+    inviteJoinCard.addView(inviteRow)
+    box.addView(inviteJoinCard)
+
+    // 4. 两步验证卡片
+    val totpCard = UiKit.card(this, 16)
+    val totpOn = currentUser.optBoolean("totp_enabled", false)
+    val tRow = UiKit.hBox(this)
+    tRow.addView(UiKit.label(this, "两步验证", 14f, UiKit.TEXT_PRIMARY, true).apply {
+        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+    })
+    tRow.addView(UiKit.badge(this, if (totpOn) "已启用两步验证" else "未启用", if (totpOn) "success" else "warning"))
+    totpCard.addView(tRow)
+    totpCard.addView(UiKit.spacer(this, 8))
+
+    totpCard.addView(UiKit.button(this, if (totpOn) "重新配置两步验证" else "启用两步验证", UiKit.ACCENT_BLUE, Color.WHITE, false) {
+        val path = if (totpOn) "/user/2fa/totp/enable?reset=true" else "/user/2fa/totp/enable"
+        runAsync(
+            work = { ApiClient.request(ApiClient.managementUrl, path, "POST", JSONObject()) },
+            done = { r ->
+                if (r.ok) {
+                    totpEnableSecret = r.json.optString("secret")
+                    totpEnableUri = r.json.optString("qr_uri").ifEmpty { r.json.optString("uri") }
+                    totpRecoveryCodesText = (r.json.optJSONArray("recovery_codes") ?: JSONArray()).toString()
+                    rebuildUi()
+                } else {
+                    setFeedback(r.error, true)
+                }
+            }
+        )
+    })
+    if (totpEnableSecret.isNotEmpty()) {
+        totpCard.addView(UiKit.label(this, "密钥: $totpEnableSecret\n验证链接: $totpEnableUri", 12f, UiKit.TEXT_SECONDARY))
+        if (totpRecoveryCodesText.isNotEmpty()) {
+            totpCard.addView(UiKit.label(this, "恢复码: $totpRecoveryCodesText", 12f, UiKit.ACCENT_GREEN, true))
+        }
+        val codeEd = UiKit.input(this, "输入验证器 6 位动态码确认绑定")
+        totpCard.addView(codeEd)
+        totpCard.addView(UiKit.button(this, "确认启用", UiKit.ACCENT_BLUE, Color.WHITE, true) {
+            runAsync(
+                work = { ApiClient.request(ApiClient.managementUrl, "/user/2fa/totp/confirm", "POST", JSONObject().put("code", codeEd.text.toString().trim())) },
+                done = { r ->
+                    if (r.ok) {
+                        totpEnableSecret = ""
+                        totpEnableUri = ""
+                        totpRecoveryCodesText = ""
+                        setFeedback("两步验证已成功启用")
+                        loadProfileData()
+                    } else {
+                        setFeedback(r.error, true)
+                    }
+                }
+            )
+        })
+    }
+    box.addView(totpCard)
+
+    // 5. 本机移动端登录安全证书与反向扫码登录网页卡片
     val certCard = UiKit.card(this, 16)
     val certHead = UiKit.hBox(this)
-    certHead.addView(UiKit.label(this, "本机移动端登录安全证书", 14f, UiKit.TEXT_PRIMARY, true).apply {
+    certHead.addView(UiKit.label(this, "移动端登录安全证书", 14f, UiKit.TEXT_PRIMARY, true).apply {
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
     })
     val cert = ApiClient.storedCertificate
@@ -414,7 +628,7 @@ fun MainActivity.buildSecurityView(): View {
         val remMins = ((remSec % 3600L) / 60L).coerceAtLeast(0L)
         certCard.addView(UiKit.label(
             this,
-            "证书标识: ${cert.certId}\n签发时间: ${formatTs(cert.issuedAt)} · 到期时间: ${formatTs(cert.expiresAt)}\n剩余有效期: ${remHours} 小时 ${remMins} 分钟（低于 24 小时可自动或手动轮换下一代，最多 12 代）",
+            "证书标识: ${cert.certId}\n签发时间: ${formatTs(cert.issuedAt)} · 到期时间: ${formatTs(cert.expiresAt)}\n剩余有效期: ${remHours} 小时 ${remMins} 分钟",
             12f,
             UiKit.TEXT_SECONDARY
         ))
@@ -438,42 +652,61 @@ fun MainActivity.buildSecurityView(): View {
     } else {
         certCard.addView(UiKit.label(
             this,
-            "当前设备尚未绑定登录安全证书。请在网页端「个人资料与安全设置」验证密码后，使用扫码器扫描安全证书二维码或粘贴兑换链接绑定。",
+            "当前设备尚未绑定登录安全证书。请在网页端「个人资料与安全设置」验证密码后，使用扫码器扫描安全证书二维码绑定。",
             12f,
             UiKit.TEXT_SECONDARY
         ))
         val bindRow = UiKit.hBox(this).apply {
             setPadding(0, UiKit.dp(this@buildSecurityView, 6), 0, 0)
         }
-        val bindEd = UiKit.input(this, "粘贴兑换链接或单次兑换码", certExchangeInput).apply {
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                rightMargin = UiKit.dp(this@buildSecurityView, 8)
-            }
-        }
-        bindRow.addView(bindEd)
-        bindRow.addView(UiKit.iconTextButton(this, MdsIcon.QR_CODE, "扫码绑定", UiKit.ACCENT_BLUE, Color.WHITE, true) {
+        bindRow.addView(UiKit.iconTextButton(this, MdsIcon.QR_CODE, "扫码绑定安全证书", UiKit.ACCENT_BLUE, Color.WHITE, true) {
             QrScanner.startScan(this) { scanned ->
                 handleDeepLinkOrScannedText(scanned)
-            }
-        }.apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = UiKit.dp(this@buildSecurityView, 6)
-            }
-        })
-        bindRow.addView(UiKit.button(this, "兑换并绑定", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
-            val raw = bindEd.text.toString().trim()
-            if (raw.isNotEmpty()) {
-                certExchangeInput = raw
-                redeemCertificateCodeAndLogin(raw)
-            } else {
-                setFeedback("请输入唤醒链接或单次兑换码", true)
             }
         })
         certCard.addView(bindRow)
     }
+
+    if (activeLoginCerts.length() > 0) {
+        certCard.addView(UiKit.divider(this, 10))
+        val listHead = UiKit.hBox(this)
+        listHead.addView(UiKit.label(this, "当前有效安全证书 (${activeLoginCerts.length()})", 13f, UiKit.TEXT_PRIMARY, true).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        listHead.addView(UiKit.button(this, "吊销全部证书", UiKit.BADGE_DANGER_BG, UiKit.BADGE_DANGER_FG, true) {
+            runAsync(
+                work = { ApiClient.request(ApiClient.managementUrl, "/user/certificate/revoke", "POST", JSONObject().put("revoke_all", true)) },
+                done = { loadProfileData() }
+            )
+        })
+        certCard.addView(listHead)
+        for (i in 0 until activeLoginCerts.length()) {
+            val item = activeLoginCerts.optJSONObject(i) ?: continue
+            val cid = item.optString("cert_id")
+            val row = UiKit.subCard(this, 10)
+            val r = UiKit.hBox(this)
+            r.addView(UiKit.label(
+                this,
+                "${item.optString("device_name").ifEmpty { "移动端安全证书" }} · 第 ${item.optInt("generation")}/${item.optInt("max_generation")} 代",
+                12f,
+                UiKit.TEXT_PRIMARY,
+                true
+            ).apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            r.addView(UiKit.button(this, "吊销", UiKit.BADGE_DANGER_BG, UiKit.BADGE_DANGER_FG, true) {
+                runAsync(
+                    work = { ApiClient.request(ApiClient.managementUrl, "/user/certificate/revoke", "POST", JSONObject().put("cert_id", cid).put("revoke_all", false)) },
+                    done = { loadProfileData() }
+                )
+            })
+            row.addView(r)
+            certCard.addView(row)
+        }
+    }
     box.addView(certCard)
 
-    // 1b. 反向扫码授权登录网页端卡片
+    // 6. 反向扫码授权登录网页端卡片
     val qrWebCard = UiKit.card(this, 16)
     val qrHead = UiKit.hBox(this)
     qrHead.addView(OfficialIcons.imageView(this, MdsIcon.QR_CODE, UiKit.ACCENT_BLUE, 20).apply {
@@ -493,120 +726,14 @@ fun MainActivity.buildSecurityView(): View {
     val qrRow = UiKit.hBox(this).apply {
         setPadding(0, UiKit.dp(this@buildSecurityView, 6), 0, 0)
     }
-    val qrInput = UiKit.input(this, "粘贴网页登录链接或登录码", qrWebLoginInput).apply {
-        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-            rightMargin = UiKit.dp(this@buildSecurityView, 8)
-        }
-    }
-    qrRow.addView(qrInput)
     qrRow.addView(UiKit.iconTextButton(this, MdsIcon.QR_CODE, "扫码授权网页登录", UiKit.ACCENT_BLUE, Color.WHITE, true) {
-        val raw = qrInput.text.toString().trim()
-        if (raw.isNotEmpty()) {
-            qrWebLoginInput = raw
-            authorizeWebQrLoginFromApp(raw)
-        } else {
-            QrScanner.startScan(this) { scanned ->
-                handleDeepLinkOrScannedText(scanned)
-            }
+        QrScanner.startScan(this) { scanned ->
+            handleDeepLinkOrScannedText(scanned)
         }
     })
     qrWebCard.addView(qrRow)
     box.addView(qrWebCard)
 
-    // 2. 个人资料卡片
-    val profileCard = UiKit.card(this, 16)
-    profileCard.addView(UiKit.label(this, "个人资料", 14f, UiKit.TEXT_PRIMARY, true))
-    profileCard.addView(UiKit.label(this, "显示昵称", 12f, UiKit.TEXT_SECONDARY, true))
-    val dnEd = UiKit.input(this, "显示昵称", currentUser.optString("display_name"))
-    profileCard.addView(dnEd)
-    profileCard.addView(UiKit.label(this, "用户名", 12f, UiKit.TEXT_SECONDARY, true))
-    val unEd = UiKit.input(this, "用户名", currentUser.optString("username"))
-    profileCard.addView(unEd)
-    profileCard.addView(UiKit.button(this, "保存个人资料", UiKit.ACCENT_BLUE, Color.WHITE, false) {
-        val newDn = dnEd.text.toString().trim()
-        val newUn = unEd.text.toString().trim()
-        runAsync(
-            work = {
-                var lastRes = HttpRes(true, 200)
-                if (newDn.isNotEmpty() && newDn != currentUser.optString("display_name")) {
-                    lastRes = ApiClient.request(ApiClient.managementUrl, "/user/info/display-name", "POST", JSONObject().put("display_name", newDn))
-                }
-                if (lastRes.ok && newUn.isNotEmpty() && newUn != currentUser.optString("username")) {
-                    lastRes = ApiClient.request(ApiClient.managementUrl, "/user/info/username", "POST", JSONObject().put("username", newUn))
-                }
-                lastRes
-            },
-            done = { r ->
-                setFeedback(if (r.ok) "个人资料已更新" else r.error, !r.ok)
-                if (r.ok) loadProfileData()
-            }
-        )
-    })
-    box.addView(profileCard)
-
-    // 3. 修改密码卡片
-    val pwdCard = UiKit.card(this, 16)
-    pwdCard.addView(UiKit.label(this, "修改登录密码", 14f, UiKit.TEXT_PRIMARY, true))
-    val oldPwd = UiKit.input(this, "当前密码", isPassword = true)
-    val newPwd = UiKit.input(this, "新密码（至少 12 个字符）", isPassword = true)
-    pwdCard.addView(oldPwd)
-    pwdCard.addView(newPwd)
-    pwdCard.addView(UiKit.button(this, "更新密码", UiKit.ACCENT_BLUE, Color.WHITE, false) {
-        val b = JSONObject().put("old_password", oldPwd.text.toString()).put("new_password", newPwd.text.toString())
-        runAsync(
-            work = { ApiClient.request(ApiClient.managementUrl, "/user/info/password/change", "POST", b) },
-            done = { r -> setFeedback(if (r.ok) "密码已修改" else r.error, !r.ok) }
-        )
-    })
-    box.addView(pwdCard)
-
-    // 4. 两步验证卡片
-    val totpCard = UiKit.card(this, 16)
-    val totpOn = currentUser.optBoolean("totp_enabled", false)
-    val tRow = UiKit.hBox(this)
-    tRow.addView(UiKit.label(this, "两步验证", 14f, UiKit.TEXT_PRIMARY, true).apply {
-        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-    })
-    tRow.addView(UiKit.badge(this, if (totpOn) "已开启" else "未开启", if (totpOn) "success" else "neutral"))
-    totpCard.addView(tRow)
-    totpCard.addView(UiKit.spacer(this, 8))
-
-    if (!totpOn) {
-        totpCard.addView(UiKit.button(this, "开启两步验证", UiKit.ACCENT_BLUE, Color.WHITE, false) {
-            runAsync(
-                work = { ApiClient.request(ApiClient.managementUrl, "/user/2fa/totp/enable", "POST", JSONObject()) },
-                done = { r ->
-                    if (r.ok) {
-                        totpEnableSecret = r.json.optString("secret")
-                        totpEnableUri = r.json.optString("qr_uri").ifEmpty { r.json.optString("uri") }
-                        totpRecoveryCodesText = (r.json.optJSONArray("recovery_codes") ?: JSONArray()).toString()
-                        rebuildUi()
-                    }
-                }
-            )
-        })
-        if (totpEnableSecret.isNotEmpty()) {
-            totpCard.addView(UiKit.label(this, "密钥: $totpEnableSecret\n验证链接: $totpEnableUri", 12f, UiKit.TEXT_SECONDARY))
-            if (totpRecoveryCodesText.isNotEmpty()) {
-                totpCard.addView(UiKit.label(this, "恢复码: $totpRecoveryCodesText", 12f, UiKit.ACCENT_GREEN, true))
-            }
-            val codeEd = UiKit.input(this, "输入验证器 6 位动态码确认绑定")
-            totpCard.addView(codeEd)
-            totpCard.addView(UiKit.button(this, "确认开启两步验证", UiKit.ACCENT_BLUE, Color.WHITE, true) {
-                runAsync(
-                    work = { ApiClient.request(ApiClient.managementUrl, "/user/2fa/totp/confirm", "POST", JSONObject().put("code", codeEd.text.toString().trim())) },
-                    done = { r ->
-                        if (r.ok) {
-                            loadProfileData()
-                        } else {
-                            setFeedback(r.error, true)
-                        }
-                    }
-                )
-            })
-        }
-    }
-    box.addView(totpCard)
     return box
 }
 
@@ -614,13 +741,20 @@ fun MainActivity.buildSecurityView(): View {
 fun MainActivity.loadGlobalAccountsData() {
     runAsync(
         work = {
-            val st = ApiClient.request(ApiClient.adminUrl, "/stats")
-            val accs = ApiClient.request(ApiClient.adminUrl, "/account?limit=100")
-            Pair(st, accs)
+            val accs = ApiClient.request(ApiClient.adminUrl, "/account")
+            val usrs = ApiClient.request(ApiClient.adminUrl, "/user/list?limit=100")
+            val pends = ApiClient.request(ApiClient.adminUrl, "/user/pending/list?limit=100")
+            Triple(accs, usrs, pends)
         },
-        done = { (st, accs) ->
-            if (st.ok) globalStatsObj = st.json
-            globalAccountsList = accs.json.optJSONArray("accounts") ?: JSONArray()
+        done = { (accs, usrs, pends) ->
+            globalAccountsList = accs.optJsonArray()
+            globalUsersList = usrs.optJsonArray()
+            pendingUsersList = pends.optJsonArray()
+            globalStatsObj = JSONObject().apply {
+                put("total_accounts", globalAccountsList.length())
+                put("total_users", globalUsersList.length())
+                put("pending_users", pendingUsersList.length())
+            }
             rebuildUi()
         }
     )
@@ -635,14 +769,10 @@ fun MainActivity.buildSuperAdminDashboardView(): View {
     })
 
     val row1 = UiKit.hBox(this)
-    row1.addView(UiKit.statCard(this, "集控账户总数", "${globalStatsObj.optInt("total_accounts")}", UiKit.TEXT_PRIMARY))
-    row1.addView(UiKit.statCard(this, "注册用户总数", "${globalStatsObj.optInt("total_users")}", UiKit.ACCENT_BLUE))
+    row1.addView(UiKit.statCard(this, "集控账户总数", "${globalStatsObj.optInt("total_accounts", globalAccountsList.length())}", UiKit.TEXT_PRIMARY))
+    row1.addView(UiKit.statCard(this, "注册用户总数", "${globalStatsObj.optInt("total_users", globalUsersList.length())}", UiKit.ACCENT_BLUE))
+    row1.addView(UiKit.statCard(this, "待审核用户", "${globalStatsObj.optInt("pending_users", pendingUsersList.length())}", UiKit.ACCENT_AMBER))
     box.addView(row1)
-
-    val row2 = UiKit.hBox(this)
-    row2.addView(UiKit.statCard(this, "全局终端总数", "${globalStatsObj.optInt("total_clients")}", UiKit.TEXT_PRIMARY))
-    row2.addView(UiKit.statCard(this, "当前在线终端", "${globalStatsObj.optInt("online_clients")}", UiKit.ACCENT_GREEN))
-    box.addView(row2)
 
     box.addView(buildGlobalAccountsCardContent())
     return box
@@ -666,11 +796,12 @@ fun MainActivity.buildGlobalAccountsCardContent(): View {
         val acc = globalAccountsList.optJSONObject(i) ?: continue
         val accId = acc.optString("id")
         val accName = acc.optString("name")
+        val accSlug = acc.optString("slug")
         val row = UiKit.subCard(this, 12)
         val h = UiKit.hBox(this)
         h.addView(UiKit.label(
             this,
-            "$accName (${acc.optString("slug")})",
+            "$accName · 标识: $accSlug",
             13f,
             UiKit.TEXT_PRIMARY,
             true
@@ -680,13 +811,15 @@ fun MainActivity.buildGlobalAccountsCardContent(): View {
         h.addView(UiKit.button(this, "进入集控编辑", UiKit.ACCENT_BLUE, Color.WHITE, true) {
             currentAccountId = accId
             currentAccountName = accName
+            currentAccountSlug = accSlug
             isSuperAdminMode = false
             isSuperAdminTakeover = true
+            saveLocalAuthState()
             navigateToSection("dashboard")
         })
         h.addView(UiKit.button(this, "删除", UiKit.BADGE_DANGER_BG, UiKit.BADGE_DANGER_FG, true) {
             runAsync(
-                work = { ApiClient.request(ApiClient.adminUrl, "/account/$accId", "DELETE") },
+                work = { ApiClient.request(ApiClient.managementUrl, "/account/$accId", "DELETE") },
                 done = { loadGlobalAccountsData() }
             )
         })
@@ -700,7 +833,7 @@ fun MainActivity.loadGlobalUsersData() {
     runAsync(
         work = { ApiClient.request(ApiClient.adminUrl, "/user/list?limit=100") },
         done = { r ->
-            globalUsersList = r.json.optJSONArray("users") ?: JSONArray()
+            globalUsersList = r.optJsonArray()
             rebuildUi()
         }
     )
@@ -716,18 +849,19 @@ fun MainActivity.buildGlobalUsersView(): View {
         val u = globalUsersList.optJSONObject(i) ?: continue
         val uid = u.optString("id")
         val active = u.optBoolean("is_active", true)
+        val rCode = u.optString("role_code", u.optString("role", "normal"))
         val item = UiKit.subCard(this, 12)
         val h = UiKit.hBox(this)
         h.addView(UiKit.label(
             this,
-            "${u.optString("username")} (${u.optString("email")})",
+            "${u.optString("username")} · ${u.optString("email")}",
             13f,
             UiKit.TEXT_PRIMARY,
             true
         ).apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        h.addView(UiKit.badge(this, u.optString("role_code", u.optString("role", "normal")), "info"))
+        h.addView(UiKit.badge(this, ROLE_LABELS[rCode] ?: rCode, "info"))
         h.addView(UiKit.button(
             this,
             if (active) "禁用" else "启用",
@@ -759,7 +893,7 @@ fun MainActivity.loadPendingUsersData() {
     runAsync(
         work = { ApiClient.request(ApiClient.adminUrl, "/user/pending/list?limit=100") },
         done = { r ->
-            pendingUsersList = r.json.optJSONArray("users") ?: JSONArray()
+            pendingUsersList = r.optJsonArray()
             rebuildUi()
         }
     )
@@ -781,7 +915,7 @@ fun MainActivity.buildPendingUsersView(): View {
         val uid = u.optString("id")
         val item = UiKit.subCard(this, 12)
         val h = UiKit.hBox(this)
-        h.addView(UiKit.label(this, "${u.optString("username")} (${u.optString("email")})", 13f, UiKit.TEXT_PRIMARY, true).apply {
+        h.addView(UiKit.label(this, "${u.optString("username")} · ${u.optString("email")}", 13f, UiKit.TEXT_PRIMARY, true).apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         h.addView(UiKit.button(this, "批准", UiKit.ACCENT_BLUE, Color.WHITE, true) {
