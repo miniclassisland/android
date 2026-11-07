@@ -438,20 +438,29 @@ fun MainActivity.buildSecurityView(): View {
     } else {
         certCard.addView(UiKit.label(
             this,
-            "当前设备尚未绑定登录安全证书。请在网页端「个人资料与安全设置 -> 移动端登录安全证书」验证密码（及两步验证）后，通过扫码唤醒本应用或在此粘贴 5 分钟兑换链接绑定。",
+            "当前设备尚未绑定登录安全证书。请在网页端「个人资料与安全设置」验证密码后，使用扫码器扫描安全证书二维码或粘贴兑换链接绑定。",
             12f,
             UiKit.TEXT_SECONDARY
         ))
         val bindRow = UiKit.hBox(this).apply {
             setPadding(0, UiKit.dp(this@buildSecurityView, 6), 0, 0)
         }
-        val bindEd = UiKit.input(this, "miniclassisland://exchange-certificate/{Code} 或兑换码", certExchangeInput).apply {
+        val bindEd = UiKit.input(this, "粘贴兑换链接或单次兑换码", certExchangeInput).apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 rightMargin = UiKit.dp(this@buildSecurityView, 8)
             }
         }
         bindRow.addView(bindEd)
-        bindRow.addView(UiKit.button(this, "兑换并绑定", UiKit.ACCENT_BLUE, Color.WHITE, true) {
+        bindRow.addView(UiKit.iconTextButton(this, MdsIcon.QR_CODE, "扫码绑定", UiKit.ACCENT_BLUE, Color.WHITE, true) {
+            QrScanner.startScan(this) { scanned ->
+                handleDeepLinkOrScannedText(scanned)
+            }
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                rightMargin = UiKit.dp(this@buildSecurityView, 6)
+            }
+        })
+        bindRow.addView(UiKit.button(this, "兑换并绑定", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
             val raw = bindEd.text.toString().trim()
             if (raw.isNotEmpty()) {
                 certExchangeInput = raw
@@ -477,26 +486,28 @@ fun MainActivity.buildSecurityView(): View {
     qrWebCard.addView(UiKit.spacer(this, 6))
     qrWebCard.addView(UiKit.label(
         this,
-        "在电脑浏览器打开登录页并点击「移动端扫码登录」，使用手机系统相机扫描网页上的二维码即可唤醒本应用确认登录。",
+        "在电脑浏览器打开登录页并点击「移动端扫码登录」，使用下方扫码按钮扫描网页上的二维码即可确认登录。",
         12f,
         UiKit.TEXT_SECONDARY
     ))
     val qrRow = UiKit.hBox(this).apply {
         setPadding(0, UiKit.dp(this@buildSecurityView, 6), 0, 0)
     }
-    val qrInput = UiKit.input(this, "miniclassisland://qr-login/{Code} 或网页登录码", qrWebLoginInput).apply {
+    val qrInput = UiKit.input(this, "粘贴网页登录链接或登录码", qrWebLoginInput).apply {
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
             rightMargin = UiKit.dp(this@buildSecurityView, 8)
         }
     }
     qrRow.addView(qrInput)
-    qrRow.addView(UiKit.iconTextButton(this, MdsIcon.QR_CODE, "确认授权网页登录", UiKit.ACCENT_BLUE, Color.WHITE, true) {
+    qrRow.addView(UiKit.iconTextButton(this, MdsIcon.QR_CODE, "扫码授权网页登录", UiKit.ACCENT_BLUE, Color.WHITE, true) {
         val raw = qrInput.text.toString().trim()
         if (raw.isNotEmpty()) {
             qrWebLoginInput = raw
             authorizeWebQrLoginFromApp(raw)
         } else {
-            setFeedback("请输入或扫描网页端登录二维码链接", true)
+            QrScanner.startScan(this) { scanned ->
+                handleDeepLinkOrScannedText(scanned)
+            }
         }
     })
     qrWebCard.addView(qrRow)

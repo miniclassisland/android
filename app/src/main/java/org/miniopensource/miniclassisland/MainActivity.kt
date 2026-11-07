@@ -209,15 +209,41 @@ class MainActivity : Activity() {
         handleIncomingDeepLink(intent)
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        QrScanner.onRequestPermissionsResult(this, requestCode, grantResults)
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        QrScanner.onActivityResult(this, requestCode, resultCode, data)
+    }
+
     internal fun handleIncomingDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
         val uriStr = data.toString().trim()
-        if (uriStr.startsWith("miniclassisland://exchange-certificate/", ignoreCase = true)) {
+        if (uriStr.isNotEmpty()) {
+            handleDeepLinkOrScannedText(uriStr)
+        }
+    }
+
+    internal fun handleDeepLinkOrScannedText(rawText: String) {
+        val uriStr = rawText.trim()
+        if (uriStr.isEmpty()) return
+        if (uriStr.startsWith("miniclassisland://exchange-certificate", ignoreCase = true)) {
             certExchangeInput = uriStr
             redeemCertificateCodeAndLogin(uriStr)
-        } else if (uriStr.startsWith("miniclassisland://qr-login/", ignoreCase = true)) {
+        } else if (uriStr.startsWith("miniclassisland://qr-login", ignoreCase = true)) {
             qrWebLoginInput = uriStr
             authorizeWebQrLoginFromApp(uriStr)
+        } else {
+            certExchangeInput = uriStr
+            redeemCertificateCodeAndLogin(uriStr)
         }
     }
 

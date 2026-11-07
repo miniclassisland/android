@@ -65,22 +65,8 @@ fun MainActivity.buildAuthView(): View {
             }
         }
         addView(logo)
-        val titleText = when (authStep) {
-            "login" -> "欢迎回来，请登录"
-            "register" -> "创建一个新账户"
-            "totp" -> "两步验证"
-            "cert" -> "使用登录安全证书登录"
-            "oobe" -> "系统首次启动 OOBE 初始化"
-            else -> "欢迎来到 MINI ClassIsland"
-        }
-        val subText = when (authStep) {
-            "login" -> if (useAdminLogin) "正在登录超级管理平台" else "输入您的账号密码以继续"
-            "register" -> "填写以下信息完成集控账号注册"
-            "totp" -> "请输入验证器应用生成的 6 位动态验证码"
-            "cert" -> "扫描二维码、点击唤醒链接或粘贴 5 分钟单次兑换码下载 7 天登录安全证书"
-            "oobe" -> "配置数据库连接与初始超级管理员账号"
-            else -> "输入您的邮箱或使用登录安全证书继续"
-        }
+        val titleText = "欢迎来到 MINI ClassIsland"
+        val subText = "请使用扫码器扫描登录安全证书二维码完成移动端登录"
         addView(UiKit.label(this@buildAuthView, titleText, 19f, UiKit.TEXT_PRIMARY, true).apply {
             gravity = Gravity.CENTER
         })
@@ -95,8 +81,8 @@ fun MainActivity.buildAuthView(): View {
     if (showEndpointConfig) {
         val epBox = UiKit.subCard(this, 12)
         epBox.addView(UiKit.label(this, "服务器接口地址配置", 12f, UiKit.TEXT_PRIMARY, true))
-        val mgmtEd = UiKit.input(this, "Management API 地址", ApiClient.managementUrl)
-        val admEd = UiKit.input(this, "Admin API 地址", ApiClient.adminUrl)
+        val mgmtEd = UiKit.input(this, "集控接口地址", ApiClient.managementUrl)
+        val admEd = UiKit.input(this, "超管接口地址", ApiClient.adminUrl)
         epBox.addView(UiKit.label(this, "集控后端地址:", 11f, UiKit.TEXT_SECONDARY))
         epBox.addView(mgmtEd)
         epBox.addView(UiKit.label(this, "超管后端地址:", 11f, UiKit.TEXT_SECONDARY))
@@ -107,11 +93,6 @@ fun MainActivity.buildAuthView(): View {
             saveLocalAuthState()
             showEndpointConfig = false
             setFeedback("已更新服务器地址")
-        })
-        epRow.addView(UiKit.button(this, "OOBE 初始化向导", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
-            showEndpointConfig = false
-            authStep = "oobe"
-            rebuildUi()
         })
         epBox.addView(epRow)
         authCard.addView(epBox)
@@ -165,359 +146,41 @@ fun MainActivity.buildAuthView(): View {
             })
         }
         certBanner.addView(cbRow)
-
-        val qrWebRow = UiKit.hBox(this).apply {
-            setPadding(0, UiKit.dp(this@buildAuthView, 6), 0, 0)
-        }
-        val qrWebEd = UiKit.input(this, "miniclassisland://qr-login/{Code} 授权网页登录", qrWebLoginInput).apply {
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                rightMargin = UiKit.dp(this@buildAuthView, 6)
-            }
-        }
-        qrWebRow.addView(qrWebEd)
-        qrWebRow.addView(UiKit.iconTextButton(this, MdsIcon.QR_CODE, "授权网页登录", UiKit.BTN_MUTED, UiKit.ACCENT_BLUE, true) {
-            val raw = qrWebEd.text.toString().trim()
-            if (raw.isNotEmpty()) {
-                qrWebLoginInput = raw
-                authorizeWebQrLoginFromApp(raw)
-            } else {
-                setFeedback("请扫描网页二维码或粘贴网页登录码", true)
-            }
-        })
-        certBanner.addView(qrWebRow)
         authCard.addView(certBanner)
         authCard.addView(UiKit.spacer(this, 10))
     }
 
-    when (authStep) {
-        "email" -> {
-            authCard.addView(UiKit.label(this, "邮箱地址", 12f, UiKit.TEXT_SECONDARY, true))
-            val emailEd = UiKit.input(this, "name@example.com", authEmailInput)
-            authCard.addView(emailEd)
-            authCard.addView(UiKit.spacer(this, 8))
-
-            authCard.addView(UiKit.button(this, "继续", UiKit.ACCENT_BLUE, Color.WHITE, false) {
-                val em = emailEd.text.toString().trim()
-                if (em.isEmpty()) {
-                    setFeedback("请输入邮箱地址", true)
-                    return@button
-                }
-                if (em.lowercase().startsWith("miniclassisland://exchange-certificate/")) {
-                    redeemCertificateCodeAndLogin(em)
-                    return@button
-                }
-                authEmailInput = em
-                authUsernameInput = em
-                authStep = "login"
-                rebuildUi()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            })
-
-            authCard.addView(UiKit.spacer(this, 6))
-            authCard.addView(UiKit.button(this, "使用登录安全证书兑换码 / 扫码登录", UiKit.BTN_MUTED, UiKit.ACCENT_BLUE, false) {
-                authStep = "cert"
-                statusMessage = ""
-                rebuildUi()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            })
-
-            authCard.addView(UiKit.divider(this, 14))
-            val bottomLinks = UiKit.hBox(this)
-            bottomLinks.addView(UiKit.button(this, "账号密码登录", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
-                authStep = "login"
-                useAdminLogin = false
-                rebuildUi()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    rightMargin = UiKit.dp(this@buildAuthView, 6)
-                }
-            })
-            bottomLinks.addView(UiKit.button(this, "超级管理员登录", UiKit.BTN_MUTED, UiKit.ACCENT_BLUE, true) {
-                authStep = "login"
-                useAdminLogin = true
-                rebuildUi()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            authCard.addView(bottomLinks)
-        }
-        "cert" -> {
-            authCard.addView(UiKit.label(this, "安全证书兑换链接或兑换码", 12f, UiKit.TEXT_SECONDARY, true))
-            val codeEd = UiKit.input(
-                this,
-                "miniclassisland://exchange-certificate/{Code} 或兑换码",
-                certExchangeInput
+    authCard.addView(
+        UiKit.iconTextButton(
+            this,
+            MdsIcon.QR_CODE,
+            "扫码登录",
+            UiKit.ACCENT_BLUE,
+            Color.WHITE,
+            false
+        ) {
+            QrScanner.startScan(this) { scanned ->
+                handleDeepLinkOrScannedText(scanned)
+            }
+        }.apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            authCard.addView(codeEd)
-            authCard.addView(UiKit.label(
-                this,
-                "提示：请先在网页端「个人资料与安全设置 -> 移动端登录安全证书」验证密码（及两步验证）后，使用系统相机扫码直接唤醒本应用，或将唤醒链接粘贴至上方输入框。",
-                11f,
-                UiKit.TEXT_TERTIARY
-            ).apply {
-                setPadding(0, UiKit.dp(this@buildAuthView, 4), 0, UiKit.dp(this@buildAuthView, 8))
-            })
-
-            authCard.addView(UiKit.button(this, "兑换下载安全证书并登录", UiKit.ACCENT_BLUE, Color.WHITE, false) {
-                val raw = codeEd.text.toString().trim()
-                if (raw.isEmpty()) {
-                    setFeedback("请输入安全证书唤醒链接或 5 分钟兑换码", true)
-                    return@button
-                }
-                certExchangeInput = raw
-                redeemCertificateCodeAndLogin(raw)
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            })
-
-            authCard.addView(UiKit.iconTextButton(this, MdsIcon.ARROW_LEFT, "返回账号密码登录", UiKit.BTN_MUTED, UiKit.TEXT_SECONDARY, true) {
-                authStep = "email"
-                statusMessage = ""
-                rebuildUi()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = UiKit.dp(this@buildAuthView, 8)
-                }
-            })
         }
-        "login" -> {
-            val modeBar = UiKit.hBox(this).apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    bottomMargin = UiKit.dp(this@buildAuthView, 10)
-                }
-            }
-            modeBar.addView(UiKit.button(
-                this,
-                "集控面板登录",
-                if (!useAdminLogin) UiKit.ACCENT_BLUE else UiKit.BTN_MUTED,
-                if (!useAdminLogin) Color.WHITE else UiKit.TEXT_PRIMARY,
-                true
-            ) {
-                useAdminLogin = false
-                rebuildUi()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    rightMargin = UiKit.dp(this@buildAuthView, 6)
-                }
-            })
-            modeBar.addView(UiKit.button(
-                this,
-                "超级管理平台",
-                if (useAdminLogin) UiKit.ACCENT_BLUE else UiKit.BTN_MUTED,
-                if (useAdminLogin) Color.WHITE else UiKit.TEXT_PRIMARY,
-                true
-            ) {
-                useAdminLogin = true
-                rebuildUi()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            authCard.addView(modeBar)
+    )
 
-            authCard.addView(UiKit.label(this, "登录邮箱", 12f, UiKit.TEXT_SECONDARY, true))
-            val userEd = UiKit.input(this, "请输入绑定邮箱", authUsernameInput.ifEmpty { authEmailInput })
-            authCard.addView(userEd)
-
-            authCard.addView(UiKit.label(this, "密码", 12f, UiKit.TEXT_SECONDARY, true))
-            val pwdEd = UiKit.input(this, "请输入密码", isPassword = true)
-            authCard.addView(pwdEd)
-            authCard.addView(UiKit.spacer(this, 8))
-
-            authCard.addView(UiKit.button(this, "登录", UiKit.ACCENT_BLUE, Color.WHITE, false) {
-                val u = userEd.text.toString().trim()
-                val p = pwdEd.text.toString()
-                if (u.isEmpty() || p.isEmpty()) {
-                    setFeedback("请输入邮箱和密码", true)
-                    return@button
-                }
-                authUsernameInput = u
-                authEmailInput = u
-                val base = if (useAdminLogin) ApiClient.adminUrl else ApiClient.managementUrl
-                val body = JSONObject().put("email", u).put("username", u).put("password", p)
-                runAsync(
-                    work = { ApiClient.request(base, "/user/auth", "POST", body) },
-                    done = { res ->
-                        if (res.isOobe) {
-                            authStep = "oobe"
-                            rebuildUi()
-                        } else if (!res.ok) {
-                            setFeedback(res.error, true)
-                        } else if (res.json.optBoolean("requires_2fa", false) || res.json.optBoolean("totp_required", false)) {
-                            totpSession = res.json.optString("temp_token").ifEmpty { res.json.optString("totp_session") }
-                            authStep = "totp"
-                            rebuildUi()
-                        } else {
-                            onLoginSuccess(res.json)
-                        }
-                    }
-                )
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            })
-
-            val navRow = UiKit.hBox(this).apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = UiKit.dp(this@buildAuthView, 10)
-                }
-            }
-            navRow.addView(UiKit.iconTextButton(this, MdsIcon.ARROW_LEFT, "返回上一步", UiKit.BTN_MUTED, UiKit.TEXT_SECONDARY, true) {
-                authStep = "email"
-                statusMessage = ""
-                rebuildUi()
-            })
-            navRow.addView(UiKit.button(this, "安全证书登录", UiKit.BTN_MUTED, UiKit.ACCENT_BLUE, true) {
-                authStep = "cert"
-                statusMessage = ""
-                rebuildUi()
-            })
-            navRow.addView(UiKit.button(this, "注册新账号", UiKit.BTN_MUTED, UiKit.ACCENT_BLUE, true) {
-                authStep = "register"
-                statusMessage = ""
-                rebuildUi()
-            })
-            authCard.addView(navRow)
+    authCard.addView(
+        UiKit.label(
+            this,
+            "请先在网页端「个人资料与安全设置」签发移动端登录安全证书，然后点击上方「扫码登录」扫描二维码即可直接完成登录；已绑定安全证书时也可直接扫描网页端登录二维码确认授权。",
+            12f,
+            UiKit.TEXT_SECONDARY
+        ).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, UiKit.dp(this@buildAuthView, 12), 0, 0)
         }
-        "register" -> {
-            authCard.addView(UiKit.label(this, "电子邮箱", 12f, UiKit.TEXT_SECONDARY, true))
-            val eEd = UiKit.input(this, "name@example.com", authEmailInput)
-            authCard.addView(eEd)
-
-            authCard.addView(UiKit.label(this, "用户名", 12f, UiKit.TEXT_SECONDARY, true))
-            val uEd = UiKit.input(this, "登录用户名", authUsernameInput)
-            authCard.addView(uEd)
-
-            authCard.addView(UiKit.label(this, "显示昵称", 12f, UiKit.TEXT_SECONDARY, true))
-            val dEd = UiKit.input(this, "您的称呼", authDisplayNameInput)
-            authCard.addView(dEd)
-
-            authCard.addView(UiKit.label(this, "设置密码", 12f, UiKit.TEXT_SECONDARY, true))
-            val pEd = UiKit.input(this, "至少 12 位密码（含大小写字母与数字）", isPassword = true)
-            authCard.addView(pEd)
-            authCard.addView(UiKit.spacer(this, 8))
-
-            authCard.addView(UiKit.button(this, "注册", UiKit.ACCENT_BLUE, Color.WHITE, false) {
-                val body = JSONObject().apply {
-                    put("username", uEd.text.toString().trim())
-                    put("display_name", dEd.text.toString().trim())
-                    put("email", eEd.text.toString().trim())
-                    put("password", pEd.text.toString())
-                }
-                runAsync(
-                    work = { ApiClient.request(ApiClient.managementUrl, "/user/apply", "POST", body) },
-                    done = { res ->
-                        if (res.ok) {
-                            authUsernameInput = eEd.text.toString().trim()
-                            authEmailInput = eEd.text.toString().trim()
-                            authStep = "login"
-                            setFeedback("注册已提交，请登录或等待管理员审核")
-                        } else {
-                            setFeedback(res.error, true)
-                        }
-                    }
-                )
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            })
-
-            authCard.addView(UiKit.iconTextButton(this, MdsIcon.ARROW_LEFT, "已有账户？返回登录", UiKit.BTN_MUTED, UiKit.TEXT_SECONDARY, true) {
-                authStep = "login"
-                rebuildUi()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = UiKit.dp(this@buildAuthView, 8)
-                }
-            })
-        }
-        "totp" -> {
-            authCard.addView(UiKit.label(this, if (totpUseRecovery) "应急恢复码" else "6 位动态验证码", 12f, UiKit.TEXT_SECONDARY, true))
-            val codeEd = UiKit.input(this, if (totpUseRecovery) "输入恢复码" else "000000")
-            authCard.addView(codeEd)
-            authCard.addView(UiKit.spacer(this, 8))
-
-            authCard.addView(UiKit.button(this, "验证并登录", UiKit.ACCENT_BLUE, Color.WHITE, false) {
-                val base = if (useAdminLogin) ApiClient.adminUrl else ApiClient.managementUrl
-                val path = if (totpUseRecovery) "/user/2fa/totp/recover" else "/user/2fa/totp/verify"
-                val key = if (totpUseRecovery) "recovery_code" else "code"
-                val body = JSONObject()
-                    .put("temp_token", totpSession)
-                    .put("totp_session", totpSession)
-                    .put(key, codeEd.text.toString().trim())
-                runAsync(
-                    work = { ApiClient.request(base, path, "POST", body) },
-                    done = { res ->
-                        if (res.ok) {
-                            onLoginSuccess(res.json)
-                        } else {
-                            setFeedback(res.error, true)
-                        }
-                    }
-                )
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            })
-
-            val r = UiKit.hBox(this).apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = UiKit.dp(this@buildAuthView, 8)
-                }
-            }
-            r.addView(UiKit.button(this, if (totpUseRecovery) "使用动态验证码" else "使用应急恢复码", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
-                totpUseRecovery = !totpUseRecovery
-                rebuildUi()
-            })
-            r.addView(UiKit.button(this, "返回登录", UiKit.BTN_MUTED, UiKit.TEXT_SECONDARY, true) {
-                authStep = "login"
-                rebuildUi()
-            })
-            authCard.addView(r)
-        }
-        "oobe" -> {
-            val passEd = UiKit.input(this, "OOBE Passcode 口令")
-            val pgEd = UiKit.input(this, "PostgreSQL URL", "postgres://postgres:postgres@localhost:5432/miniclassisland?sslmode=disable")
-            val redisEd = UiKit.input(this, "Redis URL", "redis://localhost:6379/0")
-            val domainEd = UiKit.input(this, "系统域名", "api.miniclassisland.com")
-            val userEd = UiKit.input(this, "超管用户名", "admin")
-            val emailEd = UiKit.input(this, "超管邮箱", "admin@example.com")
-            val pwdEd = UiKit.input(this, "超管密码", "", isPassword = true)
-            authCard.addView(passEd)
-            authCard.addView(pgEd)
-            authCard.addView(redisEd)
-            authCard.addView(domainEd)
-            authCard.addView(userEd)
-            authCard.addView(emailEd)
-            authCard.addView(pwdEd)
-            val actRow = UiKit.hBox(this)
-            actRow.addView(UiKit.button(this, "返回登录", UiKit.BTN_MUTED, UiKit.TEXT_PRIMARY, true) {
-                authStep = "login"
-                rebuildUi()
-            })
-            actRow.addView(UiKit.button(this, "完成 OOBE 初始化", UiKit.ACCENT_BLUE, Color.WHITE, true) {
-                val body = JSONObject().apply {
-                    put("passcode", passEd.text.toString())
-                    put("postgres_url", pgEd.text.toString())
-                    put("redis_url", redisEd.text.toString())
-                    put("domain", domainEd.text.toString())
-                    put("admin_username", userEd.text.toString())
-                    put("admin_email", emailEd.text.toString())
-                    put("admin_password", pwdEd.text.toString())
-                }
-                runAsync(
-                    work = { ApiClient.request(ApiClient.adminUrl, "/oobe/configure", "POST", body) },
-                    done = { r ->
-                        if (r.ok) {
-                            authStep = "login"
-                            setFeedback("OOBE 初始化完成，请登录")
-                        } else {
-                            setFeedback(r.error, true)
-                        }
-                    }
-                )
-            })
-            authCard.addView(actRow)
-        }
-    }
+    )
 
     outer.addView(authCard)
     outer.addView(buildWebFooterDisclaimer(true))
