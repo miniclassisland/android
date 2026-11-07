@@ -111,9 +111,9 @@ fun MainActivity.buildPreRegView(): View {
 
     val createCard = UiKit.card(this, 16)
     createCard.addView(UiKit.label(this, "添加预注册客户端", 14f, UiKit.TEXT_PRIMARY, true))
-    val labelEd = UiKit.input(this, "备注名称 (如 高一1班一体机)")
-    val cidEd = UiKit.input(this, "班级标识 (如 G1-C1)")
-    val macEd = UiKit.input(this, "MAC 地址 (可选，如 00:11:22:33:44:55)")
+    val labelEd = UiKit.input(this, "备注名称")
+    val cidEd = UiKit.input(this, "班级标识")
+    val macEd = UiKit.input(this, "MAC 地址（可选）")
     createCard.addView(labelEd)
     createCard.addView(cidEd)
     createCard.addView(macEd)
@@ -477,7 +477,7 @@ fun MainActivity.buildSecurityView(): View {
     qrWebCard.addView(UiKit.spacer(this, 6))
     qrWebCard.addView(UiKit.label(
         this,
-        "在电脑浏览器打开登录页并点击「移动端扫码登录」，使用手机系统相机扫描网页上的二维码即可直接唤醒本应用确认登录，或将网页二维码下方的链接粘贴到此处授权网页登录。",
+        "在电脑浏览器打开登录页并点击「移动端扫码登录」，使用手机系统相机扫描网页上的二维码即可唤醒本应用确认登录。",
         12f,
         UiKit.TEXT_SECONDARY
     ))

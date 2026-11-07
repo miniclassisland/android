@@ -526,7 +526,7 @@ object ApiClient {
                 val msg = parsed.optString("detail").ifEmpty {
                     parsed.optString("msg").ifEmpty {
                         parsed.optString("message").ifEmpty {
-                            parsed.optString("error").ifEmpty { "请求失败 (HTTP $code)" }
+                            parsed.optString("error").ifEmpty { "请求失败" }
                         }
                     }
                 }

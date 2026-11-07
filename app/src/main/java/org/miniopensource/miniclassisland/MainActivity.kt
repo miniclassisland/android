@@ -679,7 +679,7 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             addView(UiKit.label(this@MainActivity, "当前登录: $uName ${if (uMail.isNotEmpty()) "($uMail)" else ""}", 13f, UiKit.TEXT_PRIMARY, true))
             if (!isSuperAdminMode && currentAccountId.isNotEmpty()) {
-                addView(UiKit.label(this@MainActivity, "当前账户: $currentAccountName (ID: $currentAccountId)", 12f, UiKit.TEXT_SECONDARY))
+                addView(UiKit.label(this@MainActivity, "当前账户: $currentAccountName", 12f, UiKit.TEXT_SECONDARY))
             }
         }
         topRow.addView(infoCol)

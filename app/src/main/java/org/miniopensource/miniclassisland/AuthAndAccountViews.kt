@@ -654,8 +654,8 @@ fun MainActivity.buildAccountSelectionView(): View {
     if (showCreateAccountForm) {
         val form = UiKit.subCard(this, 12)
         form.addView(UiKit.label(this, "创建新集控账户", 13f, UiKit.TEXT_PRIMARY, true))
-        val nameEd = UiKit.input(this, "账户名称 (如 某某中学高一年级)")
-        val slugEd = UiKit.input(this, "唯一标识 (如 school-g1)")
+        val nameEd = UiKit.input(this, "账户名称")
+        val slugEd = UiKit.input(this, "唯一标识")
         form.addView(nameEd)
         form.addView(slugEd)
         val r = UiKit.hBox(this)

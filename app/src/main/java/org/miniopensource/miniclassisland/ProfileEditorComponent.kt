@@ -381,7 +381,7 @@ class ProfileEditorComponent(internal val act: MainActivity) {
             val createCard = UiKit.card(ctx, 12)
             createCard.addView(UiKit.label(ctx, "新建 $typeTitle 资源文件", 13f, UiKit.TEXT_PRIMARY, true))
             val row = UiKit.hBox(ctx)
-            val newNameEdit = UiKit.input(ctx, "输入新配置名称 (如 default / 理科班)", newFileName).apply {
+            val newNameEdit = UiKit.input(ctx, "输入新配置名称", newFileName).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                     rightMargin = UiKit.dp(ctx, 8)
                 }

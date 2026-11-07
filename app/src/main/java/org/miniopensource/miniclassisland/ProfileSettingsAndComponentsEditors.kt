@@ -38,7 +38,7 @@ internal fun ProfileEditorComponent.buildPolicyVisual(ctx: Context, container: L
 // ==================== 5. DEFAULT SETTINGS EDITOR (15 UPSTREAM TABS) ====================
 internal fun ProfileEditorComponent.buildDefaultSettingsVisual(ctx: Context, container: LinearLayout, root: JSONObject) {
     val presetBox = UiKit.subCard(ctx, 10)
-    presetBox.addView(UiKit.label(ctx, "快速生成客户端接入预设 (ManagementPreset.json)", 12f, UiKit.ACCENT_BLUE, true))
+    presetBox.addView(UiKit.label(ctx, "快速生成客户端接入预设", 12f, UiKit.ACCENT_BLUE, true))
     val pRow = UiKit.hBox(ctx)
     val idEdit = UiKit.input(ctx, "指定班级标识 (留空生成通用预设)", presetIdentityInput).apply {
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -155,10 +155,10 @@ internal fun ProfileEditorComponent.buildDefaultSettingsVisual(ctx: Context, con
             val scaleEd = UiKit.input(ctx, "界面缩放比例", root.optDouble("Scale", 1.0).toString()).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = UiKit.dp(ctx, 6) }
             }
-            val opEd = UiKit.input(ctx, "背景不透明度 (0~1)", root.optDouble("Opacity", 1.0).toString()).apply {
+            val opEd = UiKit.input(ctx, "背景不透明度", root.optDouble("Opacity", 1.0).toString()).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = UiKit.dp(ctx, 6) }
             }
-            val radEd = UiKit.input(ctx, "圆角半径 (px)", root.optDouble("RadiusX", 8.0).toString()).apply {
+            val radEd = UiKit.input(ctx, "圆角半径", root.optDouble("RadiusX", 8.0).toString()).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
             r.addView(scaleEd)
@@ -167,10 +167,10 @@ internal fun ProfileEditorComponent.buildDefaultSettingsVisual(ctx: Context, con
             pane.addView(r)
 
             val cRow = UiKit.hBox(ctx)
-            val pColorEd = UiKit.input(ctx, "主色调 (#0090FF)", root.optString("PrimaryColor", "#0090FF")).apply {
+            val pColorEd = UiKit.input(ctx, "主色调", root.optString("PrimaryColor", "#0090FF")).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = UiKit.dp(ctx, 6) }
             }
-            val sColorEd = UiKit.input(ctx, "次色调 (#0090FF)", root.optString("SecondaryColor", "#0090FF")).apply {
+            val sColorEd = UiKit.input(ctx, "次色调", root.optString("SecondaryColor", "#0090FF")).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = UiKit.dp(ctx, 6) }
             }
             val fontEd = UiKit.input(ctx, "主界面字体名称", root.optString("MainWindowFont", "HarmonyOS Sans SC")).apply {
@@ -249,10 +249,10 @@ internal fun ProfileEditorComponent.buildDefaultSettingsVisual(ctx: Context, con
             })
 
             val offRow = UiKit.hBox(ctx)
-            val oxEd = UiKit.input(ctx, "横向偏移 X (px)", root.optInt("WindowDockingOffsetX", 0).toString()).apply {
+            val oxEd = UiKit.input(ctx, "横向偏移", root.optInt("WindowDockingOffsetX", 0).toString()).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = UiKit.dp(ctx, 6) }
             }
-            val oyEd = UiKit.input(ctx, "纵向偏移 Y (px)", root.optInt("WindowDockingOffsetY", 0).toString()).apply {
+            val oyEd = UiKit.input(ctx, "纵向偏移", root.optInt("WindowDockingOffsetY", 0).toString()).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = UiKit.dp(ctx, 6) }
             }
             val monEd = UiKit.input(ctx, "显示器索引", root.optInt("WindowDockingMonitorIndex", 0).toString()).apply {
@@ -285,7 +285,7 @@ internal fun ProfileEditorComponent.buildDefaultSettingsVisual(ctx: Context, con
                 "IsNotificationEffectEnabled" to "启用全屏醒目提醒光效",
                 "IsNotificationSoundEnabled" to "启用提醒音效",
                 "IsNotificationTopmostEnabled" to "提醒时强制窗口置顶",
-                "AllowNotificationSpeech" to "启用语音播报 (TTS)"
+                "AllowNotificationSpeech" to "启用语音播报"
             )
             switches.forEach { (k, title) ->
                 pane.addView(UiKit.switchRow(ctx, title, "", root.optBoolean(k, true)) { v ->
@@ -302,10 +302,10 @@ internal fun ProfileEditorComponent.buildDefaultSettingsVisual(ctx: Context, con
             })
 
             val vRow = UiKit.hBox(ctx)
-            val sndVolEd = UiKit.input(ctx, "音效音量 (0~1)", root.optDouble("NotificationSoundVolume", 1.0).toString()).apply {
+            val sndVolEd = UiKit.input(ctx, "音效音量", root.optDouble("NotificationSoundVolume", 1.0).toString()).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = UiKit.dp(ctx, 6) }
             }
-            val ttsVolEd = UiKit.input(ctx, "语音音量 (0~1)", root.optDouble("SpeechVolume", 1.0).toString()).apply {
+            val ttsVolEd = UiKit.input(ctx, "语音音量", root.optDouble("SpeechVolume", 1.0).toString()).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = UiKit.dp(ctx, 6) }
             }
             val voiceEd = UiKit.input(ctx, "EdgeTTS 发音人", root.optString("EdgeTtsVoiceName", "zh-CN-XiaoxiaoNeural")).apply {
@@ -324,10 +324,10 @@ internal fun ProfileEditorComponent.buildDefaultSettingsVisual(ctx: Context, con
         }
         "weather" -> {
             pane.addView(UiKit.label(ctx, "气象数据源与城市配置", 13f, UiKit.TEXT_PRIMARY, true))
-            val cIdEd = UiKit.input(ctx, "城市编码 (如 weathercn:101010100)", root.optString("CityId", "weathercn:101010100"))
-            val cNameEd = UiKit.input(ctx, "城市显示名称 (如 北京)", root.optString("CityName", "北京"))
-            val latEd = UiKit.input(ctx, "经度 Longitude", root.optDouble("WeatherLongitude", 0.0).toString())
-            val lonEd = UiKit.input(ctx, "纬度 Latitude", root.optDouble("WeatherLatitude", 0.0).toString())
+            val cIdEd = UiKit.input(ctx, "城市编码", root.optString("CityId", "weathercn:101010100"))
+            val cNameEd = UiKit.input(ctx, "城市显示名称", root.optString("CityName", "北京"))
+            val latEd = UiKit.input(ctx, "经度", root.optDouble("WeatherLongitude", 0.0).toString())
+            val lonEd = UiKit.input(ctx, "纬度", root.optDouble("WeatherLatitude", 0.0).toString())
             pane.addView(cIdEd)
             pane.addView(cNameEd)
             pane.addView(latEd)
@@ -384,7 +384,7 @@ internal fun ProfileEditorComponent.buildDefaultSettingsVisual(ctx: Context, con
                 root.put("UpdateMode", m.toIntOrNull() ?: 2)
                 commitJsonAndRefresh(root)
             })
-            val chEd = UiKit.input(ctx, "更新通道 (如 stable / beta)", root.optString("SelectedUpdateChannelV2", "stable"))
+            val chEd = UiKit.input(ctx, "更新通道", root.optString("SelectedUpdateChannelV2", "stable"))
             val mirrorEd = UiKit.input(ctx, "更新镜像源标识", root.optString("SelectedUpdateMirrorV2", "github"))
             pane.addView(chEd)
             pane.addView(mirrorEd)
@@ -605,7 +605,7 @@ internal fun ProfileEditorComponent.buildComponentsVisual(ctx: Context, containe
                 val comp = targetChildren.optJSONObject(cIdx) ?: continue
                 val cid = comp.optString("Id")
                 val def = BUILTIN_COMPONENTS.find { it.id.equals(cid, ignoreCase = true) }
-                val cName = def?.name ?: comp.optString("NameCache").ifBlank { "插件组件 (${cid.take(8)})" }
+                val cName = def?.name ?: comp.optString("NameCache").ifBlank { "插件组件" }
                 val isCompSel = isLineSelected && (cIdx == selectedCompIndex)
 
                 val cRow = UiKit.hBox(ctx, 8).apply {
@@ -697,7 +697,7 @@ internal fun ProfileEditorComponent.buildComponentsVisual(ctx: Context, containe
             })
 
             bottomPane.addView(UiKit.divider(ctx, 8))
-            bottomPane.addView(UiKit.label(ctx, "插件提供组件 (输入插件组件 GUID 添加):", 12f, UiKit.TEXT_SECONDARY, true))
+            bottomPane.addView(UiKit.label(ctx, "插件提供组件:", 12f, UiKit.TEXT_SECONDARY, true))
             val pRow = UiKit.hBox(ctx)
             val guidEd = UiKit.input(ctx, "组件 GUID", customPluginComponentId).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.5f).apply { rightMargin = UiKit.dp(ctx, 6) }
@@ -881,8 +881,8 @@ private fun ProfileEditorComponent.buildSelectedComponentSpecificSettings(
             })
         }
         "7c645d35-8151-48ba-b4ac-15017460d994" -> { // 倒计时
-            val nameEd = UiKit.input(ctx, "倒计时事件名称 (如 高考)", settings.optString("CountDownName", "高考"))
-            val dateEd = UiKit.input(ctx, "目标日期 (YYYY-MM-DD)", settings.optString("OverTime", "2026-06-07").take(10))
+            val nameEd = UiKit.input(ctx, "倒计时事件名称", settings.optString("CountDownName", "高考"))
+            val dateEd = UiKit.input(ctx, "目标日期", settings.optString("OverTime", "2026-06-07").take(10))
             val fmtEd = UiKit.input(ctx, "自定义格式 (%n=名称, %d=天数)", settings.optString("CustomStringFormat", "距离 %n 还有 %d"))
             val colorEd = UiKit.input(ctx, "字体颜色", settings.optString("FontColor", "#FF0078D4"))
             pane.addView(nameEd)
@@ -904,7 +904,7 @@ private fun ProfileEditorComponent.buildSelectedComponentSpecificSettings(
         "ee8f66bd-c423-4e7c-ab46-aa9976b00e08" -> { // 文本
             val txtEd = UiKit.input(ctx, "显示的自定义文本内容", settings.optString("TextContent", "自定义文本"))
             val colEd = UiKit.input(ctx, "自定义字体颜色", settings.optString("FontColor", "#FF0078D4"))
-            val sizeEd = UiKit.input(ctx, "自定义字号 (px)", settings.optInt("FontSize", 16).toString())
+            val sizeEd = UiKit.input(ctx, "自定义字号", settings.optInt("FontSize", 16).toString())
             pane.addView(txtEd)
             pane.addView(colEd)
             pane.addView(sizeEd)
@@ -937,8 +937,8 @@ private fun ProfileEditorComponent.buildSelectedComponentSpecificSettings(
             })
         }
         "70fcd5ea-3fae-4e06-aca2-4f4df47f9acd" -> { // 滚动容器
-            val spdEd = UiKit.input(ctx, "滚动速度 (px/s)", settings.optDouble("SpeedPixelPerSecond", 40.0).toString())
-            val spcEd = UiKit.input(ctx, "首尾间距 (px)", settings.optDouble("Spacing", 40.0).toString())
+            val spdEd = UiKit.input(ctx, "滚动速度", settings.optDouble("SpeedPixelPerSecond", 40.0).toString())
+            val spcEd = UiKit.input(ctx, "首尾间距", settings.optDouble("Spacing", 40.0).toString())
             pane.addView(spdEd)
             pane.addView(spcEd)
             pane.addView(UiKit.switchRow(ctx, "启用首尾无缝连续滚动", "", settings.optBoolean("Continuous", true)) { v ->
@@ -981,10 +981,10 @@ private fun ProfileEditorComponent.buildSelectedComponentAdvancedSettings(
     })
 
     val wRow = UiKit.hBox(ctx)
-    val fwEd = UiKit.input(ctx, "固定宽度(px)", comp.optDouble("FixedWidth", 120.0).toString()).apply {
+    val fwEd = UiKit.input(ctx, "固定宽度", comp.optDouble("FixedWidth", 120.0).toString()).apply {
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = UiKit.dp(ctx, 6) }
     }
-    val opEd = UiKit.input(ctx, "组件不透明度(0~1)", comp.optDouble("Opacity", 1.0).toString()).apply {
+    val opEd = UiKit.input(ctx, "组件不透明度", comp.optDouble("Opacity", 1.0).toString()).apply {
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
     }
     wRow.addView(fwEd)
@@ -1064,7 +1064,7 @@ internal fun ProfileEditorComponent.buildCredentialsVisual(ctx: Context, contain
     container.addView(UiKit.label(ctx, "输入明文密码后点击「生成加密凭据串」，系统将自动调用后端生成兼容上游的加盐哈希串", 12f, UiKit.TEXT_SECONDARY))
 
     val userBox = UiKit.subCard(ctx, 10)
-    userBox.addView(UiKit.label(ctx, "普通用户凭据 (UserCredential):", 12f, UiKit.TEXT_PRIMARY, true))
+    userBox.addView(UiKit.label(ctx, "普通用户凭据:", 12f, UiKit.TEXT_PRIMARY, true))
     userBox.addView(UiKit.label(
         ctx,
         root.optString("UserCredential").ifBlank { "当前未设置普通用户密码" },
@@ -1101,7 +1101,7 @@ internal fun ProfileEditorComponent.buildCredentialsVisual(ctx: Context, contain
     container.addView(userBox)
 
     val adminBox = UiKit.subCard(ctx, 10)
-    adminBox.addView(UiKit.label(ctx, "管理员凭据 (AdminCredential):", 12f, UiKit.TEXT_PRIMARY, true))
+    adminBox.addView(UiKit.label(ctx, "管理员凭据:", 12f, UiKit.TEXT_PRIMARY, true))
     adminBox.addView(UiKit.label(
         ctx,
         root.optString("AdminCredential").ifBlank { "当前未设置管理员密码" },

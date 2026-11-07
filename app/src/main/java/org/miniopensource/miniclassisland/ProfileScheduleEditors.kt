@@ -324,7 +324,7 @@ internal fun ProfileEditorComponent.buildTimeLayoutVisual(ctx: Context, containe
         } else null
 
         val breakEdit = if (tType == 1) {
-            UiKit.input(ctx, "课间名称 (如 大课间)", pt.optString("BreakName", "课间休息")).apply {
+            UiKit.input(ctx, "课间名称", pt.optString("BreakName", "课间休息")).apply {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                     rightMargin = UiKit.dp(ctx, 6)
                 }
@@ -505,7 +505,7 @@ private fun ProfileEditorComponent.buildTimePointActionSetEditor(
                 })
             }
             "classisland.settings" -> {
-                val nEdit = UiKit.input(ctx, "设置属性名 (如 Scale / Theme)", settingsObj.optString("Name", "Scale"))
+                val nEdit = UiKit.input(ctx, "设置属性名", settingsObj.optString("Name", "Scale"))
                 val vEdit = UiKit.input(ctx, "目标属性值", settingsObj.optString("Value", "1.0"))
                 actCard.addView(nEdit)
                 actCard.addView(vEdit)
@@ -749,7 +749,7 @@ internal fun ProfileEditorComponent.buildClassPlanVisual(ctx: Context, container
         })
 
         rCard.addView(UiKit.label(ctx, "多周轮换周期总周数:", 12f, UiKit.TEXT_SECONDARY, true))
-        val totalOpts = listOf("2" to "双周轮换 (2周)", "3" to "三周轮换 (3周)", "4" to "四周轮换 (4周)")
+        val totalOpts = listOf("2" to "双周轮换", "3" to "三周轮换", "4" to "四周轮换")
         val curTotal = rule.optInt("WeekCountDivTotal", 2).coerceIn(2, 4)
         rCard.addView(UiKit.chipRow(ctx, totalOpts, curTotal.toString()) { t ->
             rule.put("WeekCountDivTotal", t.toIntOrNull() ?: 2)
